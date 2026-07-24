@@ -1,0 +1,61 @@
+.box {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: #1f1f1f;
+    .c1 {
+        padding: 10px;
+        .cd-1 {
+            
+            .font {
+                display: block;
+                color: #df4848;
+                font-weight: 700;
+                font-size: 30px;
+                }
+            .font-1 {
+                color: #df4848;
+                font-size: 10px;
+            }
+            }
+        .cd-2 {
+            
+            .cd-2-1 {
+                .cd-2-1-1 {
+                    margin: 19px 10px;
+                }
+            }
+            }
+        }
+    .c2 {
+        padding: 10px;
+        .sc {
+            text-align: left;
+            margin-bottom: 2px;
+            .sc-1 {
+                color: #fff;
+                font-size: 12px;
+            }
+        }
+        .tb {
+            height: 300px;
+            overflow: hidden;
+            position: relative;
+        }
+    }
+    .el-table {
+        border-radius: 6px;
+        max-height: 100%;
+        overflow: auto;
+    }
+}
+::v-deep .el-dialog__header {
+    background: #1f1f1f;
+}
+::v-deep .el-dialog__title {
+    color: #fff;
+}
+.el-message-box {
+    position: relative;
+    width: 200px!important;
+}

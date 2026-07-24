@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stock-web
+  labels:
+    app: stock-web
+spec:
+  replicas: 2 # 启动两个 Pod 副本7
+  selector:
+    matchLabels:
+      app: stock-web
+  template:
+    metadata:
+      labels:
+        app: stock-web
+    spec:
+      containers:
+      - name: web
+        image: frontend:latest   # <--- 请注意！这就是我们留给 CI 替换的靶子！
+        ports:
+        - containerPort: 80
