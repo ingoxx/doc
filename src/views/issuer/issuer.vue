@@ -23,7 +23,7 @@
 			<div class="header-actions">
 				<el-button class="glow-btn primary-gradient-btn" size="small" icon="el-icon-plus"
 					@click="openProblemDialog">
-					录入新故障
+					录入新文档
 				</el-button>
 				<div class="divider"></div>
 				<div class="theme-btn" @click="toggleTheme" :title="isDark ? '切换到白天模式' : '切换到暗黑深邃模式'">
