@@ -23,7 +23,7 @@
 			<div class="header-actions">
 				<el-button class="glow-btn primary-gradient-btn" size="small" icon="el-icon-plus"
 					@click="openProblemDialog">
-					录入新文档
+					录入新故障
 				</el-button>
 				<div class="divider"></div>
 				<div class="theme-btn" @click="toggleTheme" :title="isDark ? '切换到白天模式' : '切换到暗黑深邃模式'">
@@ -113,7 +113,7 @@
 			</aside>
 
 			<!-- 右侧阅读工作区 (Main) -->
-			<main class="bp-main">
+			<main class="bp-main" ref="mainScrollContainer" @scroll="handleScroll">
 				<div class="main-content-container">
 
 					<div class="main-header">
@@ -204,7 +204,7 @@
 											:key="'deck-item-' + prob.id"
 											:style="{ '--card-index': idx }"
 											@click="scrollToProblem(prob.id)"
-											:title="'点击直达：' + prob.title"
+											:title="'点击直达标题位置：' + prob.title"
 										>
 											<div class="deck-card-top">
 												<span class="deck-card-badge">#{{ String(idx + 1).padStart(2, '0') }}</span>
@@ -349,6 +349,19 @@
 					</transition>
 
 				</div>
+
+				<!-- ================= 快捷一键置顶 / 置底悬浮工具栏 ================= -->
+				<transition name="toast-slide-up">
+					<div class="quick-scroll-widget" v-show="showScrollButtons">
+						<div class="scroll-btn" @click="scrollToTop" title="一键回到顶部">
+							<i class="el-icon-caret-top"></i>
+						</div>
+						<div class="scroll-divider"></div>
+						<div class="scroll-btn" @click="scrollToBottom" title="一键直达底部">
+							<i class="el-icon-caret-bottom"></i>
+						</div>
+					</div>
+				</transition>
 			</main>
 		</div>
 
@@ -533,6 +546,9 @@ export default {
 			apiLoading: false,
 			activeCategoryId: null,
 
+			// 快速置顶/置底悬浮控件显隐控制
+			showScrollButtons: false,
+
 			// 控制分类切换“先隐后现”的响应式显隐开关
 			isContentVisible: true,
 
@@ -653,6 +669,33 @@ export default {
 		await this.fetchData();
 	},
 	methods: {
+		// ======== 滚动事件监听与置顶/置底辅助函数 ========
+		handleScroll(e) {
+			const scrollTop = e.target.scrollTop;
+			// 滚动距离超过 150px 时淡入悬浮控制按钮
+			this.showScrollButtons = scrollTop > 150;
+		},
+
+		scrollToTop() {
+			const mainContainer = this.$refs.mainScrollContainer || this.$el.querySelector('.bp-main');
+			if (mainContainer) {
+				mainContainer.scrollTo({
+					top: 0,
+					behavior: 'smooth'
+				});
+			}
+		},
+
+		scrollToBottom() {
+			const mainContainer = this.$refs.mainScrollContainer || this.$el.querySelector('.bp-main');
+			if (mainContainer) {
+				mainContainer.scrollTo({
+					top: mainContainer.scrollHeight,
+					behavior: 'smooth'
+				});
+			}
+		},
+
 		// ======== 核心优化：先隐后现的分类切换函数 ========
 		async selectCategory(id) {
 			if (this.activeCategoryId === id) return;
@@ -678,24 +721,48 @@ export default {
 			});
 		},
 
-		// ======== 卡牌直达与锚点平滑定位 ========
-		scrollToProblem(id) {
+		// ======== 核心修复：精准计算容器 Top 并平滑锚点定位 ========
+		async scrollToProblem(id) {
+			// 1. 计算目标故障在列表中的索引，判断是否需要跨页
 			const index = this.currentProblems.findIndex(p => p.id === id);
 			if (index !== -1) {
 				const targetPage = Math.floor(index / this.pageSize) + 1;
-				this.currentPage = targetPage;
+				if (this.currentPage !== targetPage) {
+					this.currentPage = targetPage;
+					// 跨页时切换并重新拉取页面数据
+					await this.getProblems(targetPage);
+				}
 			}
 
+			// 2. 留出足够的 DOM 重新挂载渲染时间（60ms 确保元素就位）
 			this.$nextTick(() => {
-				const targetEl = document.getElementById('problem-card-' + id);
-				if (targetEl) {
-					targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-					this.highlightedProblemId = id;
-					if (this.highlightTimer) clearTimeout(this.highlightTimer);
-					this.highlightTimer = setTimeout(() => {
-						this.highlightedProblemId = null;
-					}, 2200);
-				}
+				setTimeout(() => {
+					// 获取实际产生滚动的右侧主容器与目标卡片 DOM
+					const mainContainer = this.$refs.mainScrollContainer || this.$el.querySelector('.bp-main');
+					const targetEl = document.getElementById('problem-card-' + id);
+
+					if (mainContainer && targetEl) {
+						// 动态计算目标卡片相对于 bp-main 容器顶部的精确 offset 坐标
+						const containerRect = mainContainer.getBoundingClientRect();
+						const targetRect = targetEl.getBoundingClientRect();
+
+						// 当前滚动高度 + 相对差值 - 顶留白(20px)，保证卡片标题完美处于可视区顶部
+						const targetScrollTop = mainContainer.scrollTop + (targetRect.top - containerRect.top) - 20;
+
+						// 调用原生 scrollTo 精准平滑滚动滚动条
+						mainContainer.scrollTo({
+							top: Math.max(0, targetScrollTop),
+							behavior: 'smooth'
+						});
+
+						// 触发蓝光边框闪烁高亮，持续 2.2 秒后自动消失
+						this.highlightedProblemId = id;
+						if (this.highlightTimer) clearTimeout(this.highlightTimer);
+						this.highlightTimer = setTimeout(() => {
+							this.highlightedProblemId = null;
+						}, 2200);
+					}
+				}, 60);
 			});
 		},
 
@@ -2027,6 +2094,49 @@ export default {
 	.card-deck-grid {
 		grid-template-columns: repeat(2, 1fr);
 	}
+}
+
+/* ================= 5. 快捷置顶 / 置底悬浮胶囊工具栏 ================= */
+.quick-scroll-widget {
+	position: fixed;
+	right: 36px;
+	bottom: 36px;
+	z-index: 99;
+	display: flex;
+	flex-direction: column;
+	background-color: var(--bg-card);
+	border: 1px solid var(--border-color);
+	border-radius: 24px;
+	padding: 4px;
+	box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+}
+
+.scroll-btn {
+	width: 36px;
+	height: 36px;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 20px;
+	color: var(--text-muted);
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.scroll-btn:hover {
+	background-color: var(--hover-sidebar);
+	color: var(--primary-blue);
+	transform: scale(1.12);
+}
+
+.scroll-divider {
+	height: 1px;
+	width: 20px;
+	margin: 2px auto;
+	background-color: var(--border-color);
 }
 
 .check-all-box {
