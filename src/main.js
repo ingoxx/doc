@@ -34,7 +34,9 @@ import { Alert } from 'element-ui'
 import { Checkbox } from 'element-ui'
 import { CheckboxGroup } from 'element-ui'
 import { Avatar } from 'element-ui'
-
+import { Dropdown } from 'element-ui'
+import { DropdownMenu} from 'element-ui'
+import { DropdownItem} from 'element-ui'
 
 Vue.use(Table)
 Vue.use(TableColumn)
@@ -63,7 +65,9 @@ Vue.use(Alert)
 Vue.use(Checkbox)
 Vue.use(CheckboxGroup)
 Vue.use(Avatar)
-
+Vue.use(Dropdown)
+Vue.use(DropdownMenu)
+Vue.use(DropdownItem)
 Vue.config.productionTip = false
 
 

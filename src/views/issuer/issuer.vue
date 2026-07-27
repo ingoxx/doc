@@ -79,23 +79,34 @@
 							<i class="menu-cat-icon"
 								:class="activeCategoryId === cat.id ? 'el-icon-folder-opened' : 'el-icon-folder'"></i>
 							
-							<!-- 绑定独立响应式变量 editCategoryName 解决无法打字问题 -->
 							<el-input v-if="editCategoryId === cat.id" :ref="'catInput_' + cat.id" v-model="editCategoryName"
 								size="mini" class="category-inline-input" @blur="finishEditCategory(cat)"
 								@keyup.enter.native="finishEditCategory(cat)" @click.stop.native></el-input>
 							<div v-else class="menu-text-wrapper">
 								<span class="menu-text" :title="cat.name">{{ cat.name }}</span>
+								<i v-if="cat.is_shared" class="el-icon-share shared-icon-tag" title="公开共享分类"></i>
 								<span class="menu-badge" v-if="cat.docCount > 0">{{ cat.docCount }}</span>
 							</div>
 						</div>
 
-						<el-popover :ref="'popover_' + cat.id" placement="right-start" width="180" trigger="click"
+						<el-popover :ref="'popover_' + cat.id" placement="right-start" width="200" trigger="click"
 							:visible-arrow="false"
 							:popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 							<div class="action-menu-list">
-								<div class="action-item" @click.stop="handleCategoryCommand('share', cat)">
-									<i class="el-icon-share"></i> <span>分享该库</span>
+								<div class="action-item switch-action-item" @click.stop>
+									<div class="switch-item-left">
+										<i class="el-icon-share"></i>
+										<span>公开共享分类</span>
+									</div>
+									<el-switch
+										v-model="cat.is_shared"
+										size="mini"
+										active-color="#0ea5e9"
+										@change="handleCategoryShareChange(cat)"
+										@click.native.stop>
+									</el-switch>
 								</div>
+								<div class="action-divider"></div>
 								<div class="action-item" @click.stop="handleCategoryCommand('rename', cat)">
 									<i class="el-icon-edit"></i> <span>重命名分类</span>
 								</div>
@@ -118,9 +129,21 @@
 
 					<div class="main-header">
 						<div class="category-meta">
-							<div class="category-badge">当前目录</div>
+							<!-- 当前目录分类创建者展示 -->
+							<div class="category-badge-group">
+								<span class="category-badge">当前目录</span>
+								<span v-if="currentCategory && currentCategory.creator" class="category-creator-badge" title="目录创建者">
+									<i class="el-icon-user"></i> {{ currentCategory.creator.username }} 创建
+								</span>
+							</div>
+
 							<h1 class="category-title">{{ currentCategoryName }}</h1>
-							<p class="category-subtitle">共收录 {{ currentProblems.length }} 个故障解决方案</p>
+							<p class="category-subtitle">
+								共收录 {{ computedTotalProblems }} 个故障解决方案
+								<span v-if="currentCategory && currentCategory.createdAt">
+									· 创建于 {{ currentCategory.createdAt.split('T')[0] }}
+								</span>
+							</p>
 						</div>
 
 						<div class="main-header-actions">
@@ -141,12 +164,11 @@
 								:popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 								<div class="action-menu-list">
 									<div class="action-item" @click="exportToMarkdown('all')">
-										<i class="el-icon-document-copy"></i> <span>直接导出当前目录全量</span>
+										<i class="el-icon-document-copy"></i> <span>直接导出当前页全量</span>
 									</div>
 									<div class="action-item" :class="{ 'is-disabled': selectedProblemIds.length === 0 }"
 										@click="selectedProblemIds.length > 0 && exportToMarkdown('selected')">
-										<i class="el-icon-finished"></i> <span>导出勾选项 ({{ selectedProblemIds.length
-											}})</span>
+										<i class="el-icon-finished"></i> <span>导出勾选项 ({{ selectedProblemIds.length }})</span>
 									</div>
 									<div class="action-divider"></div>
 									<div class="action-item" @click="toggleBatchMode"
@@ -178,17 +200,17 @@
 						</div>
 					</transition>
 
-					<!-- ================= 分类内容严格“先隐后现”过渡包裹层 ================= -->
+					<!-- ================= 分类内容过渡包裹层 ================= -->
 					<transition name="category-switch" mode="out-in">
 						<div class="category-content-body" v-if="isContentVisible" :key="activeCategoryId">
 
-							<!-- 3. 快速故障卡牌导航区 (发牌特效每行5列) -->
+							<!-- 3. 快速故障卡牌导航区 -->
 							<div class="card-deck-wrapper" v-if="currentProblems.length > 0" :key="'deck-' + cardDealKey">
 								<div class="deck-header">
 									<div class="deck-title">
 										<i class="el-icon-s-grid"></i>
 										<span>目录故障卡牌速查</span>
-										<span class="deck-badge">{{ currentProblems.length }} 篇快查</span>
+										<span class="deck-badge">{{ currentProblems.length }} 篇本页快查</span>
 									</div>
 									<el-button type="text" class="deck-toggle-btn" @click="showCardOverview = !showCardOverview">
 										<i :class="showCardOverview ? 'el-icon-arrow-up' : 'el-icon-arrow-down'"></i>
@@ -247,11 +269,10 @@
 										}"
 										@click="isBatchMode && toggleSingleSelection(prob.id)"
 									>
+										<!-- 卡片 Header -->
 										<div class="card-header">
 											<div class="card-title-group">
-												<div class="index-badge">#{{ String((currentPage - 1) * pageSize + index +
-													1).padStart(2, '0') }}
-												</div>
+												<div class="index-badge">#{{ String((currentPage - 1) * pageSize + index + 1).padStart(2, '0') }}</div>
 
 												<el-input v-if="editTitleId === prob.id" :ref="'titleInput_' + prob.id"
 													v-model="prob.title" size="small" class="inline-edit-input"
@@ -264,8 +285,7 @@
 											</div>
 
 											<div class="card-header-actions" @click.stop>
-												<span class="update-time"><i class="el-icon-time"></i> {{ prob.updatedAt || '刚刚'
-													}}</span>
+												<span class="update-time"><i class="el-icon-time"></i> {{ prob.updatedAt || '刚刚' }}</span>
 												<div class="action-icons">
 													<el-button type="text" class="icon-btn" icon="el-icon-download"
 														@click.stop="exportSingleProblem(prob)" title="仅导出此文档"></el-button>
@@ -277,12 +297,72 @@
 										</div>
 
 										<div class="card-body" @click.stop>
+											<!-- 故障文档人员信息元数据栏（创建者、更新者、编辑参与人、共享状态、版本） -->
+											<div class="doc-meta-bar">
+												<div class="meta-item creator" title="文档创建者">
+													<i class="el-icon-user-solid"></i>
+													<span class="meta-label">创建：</span>
+													<span class="meta-value author-name">{{ prob.creator ? prob.creator.username : '未知' }}</span>
+												</div>
+
+												<div class="meta-divider"></div>
+
+												<div class="meta-item updater" title="最近更新作者">
+													<i class="el-icon-edit-outline"></i>
+													<span class="meta-label">最近更新：</span>
+													<span class="meta-value updater-name">{{ prob.updatedBy ? prob.updatedBy.username : (prob.creator ? prob.creator.username : '未知') }}</span>
+												</div>
+
+												<div class="meta-divider" v-if="prob.editors && prob.editors.length > 0"></div>
+
+												<!-- 参与编辑的人员列表Popover展示 -->
+												<div class="meta-item editors" v-if="prob.editors && prob.editors.length > 0">
+													<i class="el-icon-s-custom"></i>
+													<span class="meta-label">贡献者：</span>
+													<el-popover placement="top" trigger="hover" width="200"
+														:popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
+														<div class="editors-popover-content">
+															<div class="editors-title"><i class="el-icon-user"></i> 编辑参与者列表 ({{ prob.editors.length }})</div>
+															<div class="editors-tag-list">
+																<span class="editor-chip" v-for="ed in prob.editors" :key="ed.id">
+																	<i class="el-icon-check"></i> {{ ed.username }}
+																</span>
+															</div>
+														</div>
+														<div slot="reference" class="editors-trigger">
+															<span class="editor-badge" v-for="(ed, eIdx) in prob.editors.slice(0, 3)" :key="ed.id">
+																{{ ed.username }}{{ eIdx < Math.min(prob.editors.length, 3) - 1 ? '、' : '' }}
+															</span>
+															<span class="more-count" v-if="prob.editors.length > 3">+{{ prob.editors.length - 3 }}人</span>
+														</div>
+													</el-popover>
+												</div>
+
+												<div class="meta-divider"></div>
+
+												<!-- 故障文档 is_shared 共享状态开关 -->
+												<div class="meta-item share-switch-item" title="切换文档公开共享状态">
+													<i class="el-icon-share"></i>
+													<span class="meta-label">公开：</span>
+													<el-switch
+														v-model="prob.isShared"
+														size="mini"
+														active-color="#0ea5e9"
+														@change="handleProblemShareChange(prob)"
+														@click.native.stop>
+													</el-switch>
+												</div>
+
+												<div class="meta-version-badge" v-if="prob.version">
+													<span>v{{ prob.version }}</span>
+												</div>
+											</div>
+
 											<!-- ======= 附件与排查思路头部 ======= -->
 											<div class="solution-header">
 												<div class="solution-header-left">
 													<div class="solution-label">
 														<i class="el-icon-magic-stick"></i> 排查思路与解决方案
-														<!-- 识别为 MD 格式时显示标记 -->
 														<span class="md-tag" v-if="isMarkdown(prob.solution)">
 															<i class="el-icon-document-checked"></i> MD 格式
 														</span>
@@ -316,9 +396,21 @@
 													<div class="copy-btn action-btn" @click.stop="openMoveDialog(prob)">
 														<i class="el-icon-folder-opened"></i> <span>移动分类</span>
 													</div>
-													<div class="copy-btn action-btn" @click.stop="copySolution(prob.solution)">
-														<i class="el-icon-document-copy"></i> <span>复制</span>
-													</div>
+
+													<!-- 双模式复制下拉菜单 (复制原文 / 复制纯文本) -->
+													<el-dropdown trigger="click" @command="(cmd) => handleCopyCommand(cmd, prob.solution)" @click.native.stop>
+														<div class="copy-btn action-btn">
+															<i class="el-icon-document-copy"></i> <span>复制</span> <i class="el-icon-arrow-down el-icon--right"></i>
+														</div>
+														<el-dropdown-menu slot="dropdown" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
+															<el-dropdown-item command="raw">
+																<i class="el-icon-document-copy"></i> 复制原文 (保留 MD / 格式)
+															</el-dropdown-item>
+															<el-dropdown-item command="plain">
+																<i class="el-icon-tickets"></i> 复制纯文本 (转换无格式文本)
+															</el-dropdown-item>
+														</el-dropdown-menu>
+													</el-dropdown>
 												</div>
 											</div>
 
@@ -337,11 +429,16 @@
 								</div>
 							</el-checkbox-group>
 
-							<!-- 6. 现代化底部交互分页器 -->
-							<div class="pagination-wrapper" v-if="currentProblems.length > 0 || totalProblems > 0">
-								<el-pagination background @size-change="handleSizeChange" @current-change="handleCurrentChange"
-									:current-page="currentPage" :page-sizes="[5, 10, 20]" :page-size="pageSize"
-									layout="total, sizes, prev, pager, next, jumper" :total="totalProblems || currentProblems.length">
+							<!-- 6. 分页栏（total 实时绑定左侧选中分类的 docCount） -->
+							<div class="pagination-wrapper" v-if="computedTotalProblems > 0 || currentProblems.length > 0">
+								<el-pagination background 
+									@size-change="handleSizeChange" 
+									@current-change="handleCurrentChange"
+									:current-page="currentPage" 
+									:page-sizes="[5, 10, 20, 50]" 
+									:page-size="pageSize"
+									layout="total, sizes, prev, pager, next, jumper" 
+									:total="computedTotalProblems">
 								</el-pagination>
 							</div>
 
@@ -546,27 +643,21 @@ export default {
 			apiLoading: false,
 			activeCategoryId: null,
 
-			// 快速置顶/置底悬浮控件显隐控制
 			showScrollButtons: false,
-
-			// 控制分类切换“先隐后现”的响应式显隐开关
 			isContentVisible: true,
 
-			// 卡牌速查相关控制属性
 			cardDealKey: Date.now(),
 			showCardOverview: true,
 			highlightedProblemId: null,
 			highlightTimer: null,
 
-			// 分页器相关属性
 			currentPage: 1,
 			pageSize: 10,
 			totalProblems: 0,
+			totalCategories: 0,
 
-			// 附件上传定位ID
 			uploadTargetProbId: null,
 
-			// 控制左滑动画及跨目录多选的标志
 			isBatchMode: false,
 			selectedProblemIds: [],
 
@@ -591,7 +682,7 @@ export default {
 			toastTimer: null,
 
 			editCategoryId: null,
-			editCategoryName: '', // 专门用于存储修改分类时的文本，解决输入框无法打字问题
+			editCategoryName: '',
 			editTitleId: null,
 			editSolutionId: null,
 
@@ -614,17 +705,32 @@ export default {
 				const query = this.searchCategoryQuery.toLowerCase();
 				result = result.filter(c => c.name.toLowerCase().includes(query));
 			}
-			return result.map(cat => ({
-				...cat,
-				docCount: this.problems.filter(p => p.categoryId === cat.id).length
-			}));
+			return result.map(cat => {
+				const count = (cat.problems && Array.isArray(cat.problems))
+					? cat.problems.length
+					: this.problems.filter(p => Number(p.categoryId) === Number(cat.id)).length;
+				return {
+					...cat,
+					docCount: count
+				};
+			});
+		},
+		// 直接从包含 docCount 的 filteredCategories 映射当前选中分类
+		currentCategory() {
+			if (!this.activeCategoryId) return null;
+			return this.filteredCategories.find(c => Number(c.id) === Number(this.activeCategoryId)) || null;
 		},
 		currentCategoryName() {
-			const cat = this.categories.find(c => c.id === this.activeCategoryId);
-			return cat ? cat.name : '全部记录';
+			return this.currentCategory ? this.currentCategory.name : '全部记录';
 		},
 		currentProblems() {
-			let probs = this.problems.filter(p => p.categoryId === this.activeCategoryId);
+			let probs = this.problems;
+
+			if (this.activeCategoryId !== null && this.activeCategoryId !== undefined) {
+				const targetId = Number(this.activeCategoryId);
+				probs = probs.filter(p => Number(p.categoryId) === targetId);
+			}
+
 			if (this.searchProblemQuery) {
 				const query = this.searchProblemQuery.toLowerCase();
 				probs = probs.filter(
@@ -634,12 +740,23 @@ export default {
 			return probs;
 		},
 		paginatedProblems() {
-			if (this.currentProblems.length <= this.pageSize) {
-				return this.currentProblems;
+			return this.currentProblems;
+		},
+		// ======== 核心优化：右侧分页器的 total 值优先使用选中分类的 docCount ========
+		computedTotalProblems() {
+			// 1. 如果在右侧搜索框输入了查询关键词，以搜索过滤后的实际列表条数为准
+			if (this.searchProblemQuery) {
+				return this.currentProblems.length;
 			}
-			const start = (this.currentPage - 1) * this.pageSize;
-			const end = start + this.pageSize;
-			return this.currentProblems.slice(start, end);
+			// 2. 无搜索词时，直接使用左侧选中分类徽章中的 docCount 的值
+			if (this.currentCategory && typeof this.currentCategory.docCount === 'number') {
+				return this.currentCategory.docCount;
+			}
+			// 3. 兜底逻辑：接口返回的 totalProblems 或当前渲染数组长度
+			if (typeof this.totalProblems === 'number' && this.totalProblems > 0) {
+				return this.totalProblems;
+			}
+			return this.currentProblems.length;
 		},
 		isIndeterminate() {
 			const selectedInCurrentPage = this.paginatedProblems.filter(p => this.selectedProblemIds.includes(p.id)).length;
@@ -669,10 +786,8 @@ export default {
 		await this.fetchData();
 	},
 	methods: {
-		// ======== 滚动事件监听与置顶/置底辅助函数 ========
 		handleScroll(e) {
 			const scrollTop = e.target.scrollTop;
-			// 滚动距离超过 150px 时淡入悬浮控制按钮
 			this.showScrollButtons = scrollTop > 150;
 		},
 
@@ -696,77 +811,50 @@ export default {
 			}
 		},
 
-		// ======== 核心优化：先隐后现的分类切换函数 ========
 		async selectCategory(id) {
-			if (this.activeCategoryId === id) return;
+			if (Number(this.activeCategoryId) === Number(id)) return;
 
-			// 1. 立即触发当前内容淡出隐藏，彻底从 DOM 中移除旧分类节点
 			this.isContentVisible = false;
-
-			// 2. 留出 140ms 给旧页面淡出完成，避免旧内容延迟滞留或残影
 			await new Promise(resolve => setTimeout(resolve, 140));
 
-			// 3. 更新 activeCategoryId 和重置查询/页码
-			this.activeCategoryId = id;
+			this.activeCategoryId = Number(id);
 			this.searchProblemQuery = '';
 			this.currentPage = 1;
 			this.cardDealKey = Date.now();
 
-			// 4. 请求最新后端数据
 			await this.getProblems(1);
 
-			// 5. 新数据加载就绪后，再重新淡入呈现新分类，触发发牌动画
 			this.$nextTick(() => {
 				this.isContentVisible = true;
 			});
 		},
 
-		// ======== 核心修复：精准计算容器 Top 并平滑锚点定位 ========
 		async scrollToProblem(id) {
-			// 1. 计算目标故障在列表中的索引，判断是否需要跨页
 			const index = this.currentProblems.findIndex(p => p.id === id);
 			if (index !== -1) {
-				const targetPage = Math.floor(index / this.pageSize) + 1;
-				if (this.currentPage !== targetPage) {
-					this.currentPage = targetPage;
-					// 跨页时切换并重新拉取页面数据
-					await this.getProblems(targetPage);
+				const targetEl = document.getElementById('problem-card-' + id);
+				const mainContainer = this.$refs.mainScrollContainer || this.$el.querySelector('.bp-main');
+
+				if (mainContainer && targetEl) {
+					const containerRect = mainContainer.getBoundingClientRect();
+					const targetRect = targetEl.getBoundingClientRect();
+
+					const targetScrollTop = mainContainer.scrollTop + (targetRect.top - containerRect.top) - 20;
+
+					mainContainer.scrollTo({
+						top: Math.max(0, targetScrollTop),
+						behavior: 'smooth'
+					});
+
+					this.highlightedProblemId = id;
+					if (this.highlightTimer) clearTimeout(this.highlightTimer);
+					this.highlightTimer = setTimeout(() => {
+						this.highlightedProblemId = null;
+					}, 2200);
 				}
 			}
-
-			// 2. 留出足够的 DOM 重新挂载渲染时间（60ms 确保元素就位）
-			this.$nextTick(() => {
-				setTimeout(() => {
-					// 获取实际产生滚动的右侧主容器与目标卡片 DOM
-					const mainContainer = this.$refs.mainScrollContainer || this.$el.querySelector('.bp-main');
-					const targetEl = document.getElementById('problem-card-' + id);
-
-					if (mainContainer && targetEl) {
-						// 动态计算目标卡片相对于 bp-main 容器顶部的精确 offset 坐标
-						const containerRect = mainContainer.getBoundingClientRect();
-						const targetRect = targetEl.getBoundingClientRect();
-
-						// 当前滚动高度 + 相对差值 - 顶留白(20px)，保证卡片标题完美处于可视区顶部
-						const targetScrollTop = mainContainer.scrollTop + (targetRect.top - containerRect.top) - 20;
-
-						// 调用原生 scrollTo 精准平滑滚动滚动条
-						mainContainer.scrollTo({
-							top: Math.max(0, targetScrollTop),
-							behavior: 'smooth'
-						});
-
-						// 触发蓝光边框闪烁高亮，持续 2.2 秒后自动消失
-						this.highlightedProblemId = id;
-						if (this.highlightTimer) clearTimeout(this.highlightTimer);
-						this.highlightTimer = setTimeout(() => {
-							this.highlightedProblemId = null;
-						}, 2200);
-					}
-				}, 60);
-			});
 		},
 
-		// ======== 卡牌摘要无格式纯文本提取 ========
 		getPlainSummary(text) {
 			if (!text) return '暂无详细描述...';
 			let clean = text
@@ -780,7 +868,6 @@ export default {
 			return clean.length > 45 ? clean.substring(0, 45) + '...' : (clean || '暂无详细描述...');
 		},
 
-		// ======== 用户头像下拉菜单逻辑 ========
 		handleUserCommand(command) {
 			if (command === 'history') {
 				this.showToast('正在加载操作历史记录...');
@@ -795,20 +882,19 @@ export default {
 			}
 		},
 
-		// ======== Markdown 增强识别与解析 ========
 		isMarkdown(text) {
 			if (!text || typeof text !== 'string') return false;
 			const mdPatterns = [
-				/```[\s\S]*?```/,                  // 代码块
-				/`[^`]+`/,                          // 行内代码/命令
-				/!\[.*?\]\(.*?\)/,                 // 图片 ![alt](url)
-				/\[.*?\]\(.*?\)/,                  // 链接 [text](url)
-				/^#{1,6}\s+/m,                     // 多级标题
-				/^\s*[-*+]\s+/m,                   // 无序列表
-				/^\s*\d+\.\s+/m,                   // 有序列表
-				/^\s*>\s+/m,                       // 引用块
-				/\*\*.+?\*\*/,                     // 粗体
-				/~~.+?~~/                          // 删除线
+				/```[\s\S]*?```/,
+				/`[^`]+`/,
+				/!\[.*?\]\(.*?\)/,
+				/\[.*?\]\(.*?\)/,
+				/^#{1,6}\s+/m,
+				/^\s*[-*+]\s+/m,
+				/^\s*\d+\.\s+/m,
+				/^\s*>\s+/m,
+				/\*\*.+?\*\*/,
+				/~~.+?~~/
 			];
 			return mdPatterns.some(pattern => pattern.test(text));
 		},
@@ -823,7 +909,6 @@ export default {
 			}
 		},
 
-		// ======== 完成编辑标题：带上 prob.id 发送更新请求 ========
 		async finishEditTitle(prob) {
 			if (this.editTitleId !== prob.id) return;
 			this.editTitleId = null;
@@ -831,17 +916,18 @@ export default {
 			this.apiLoading = true;
 			try {
 				const resp = await create_problems({
-					id: prob.id,                   // 明确携带 ID：后端判定为 UPDATE
+					id: prob.id,
 					category_id: prob.categoryId,
 					title: prob.title.trim(),
-					solution: prob.solution
+					solution: prob.solution,
+					is_shared: prob.isShared
 				});
-				const res = resp.data?.code !== undefined ? resp.data : resp;
-				if (res.code === 1000) {
+				const res = resp?.data?.code !== undefined ? resp.data : resp;
+				if (res && res.code === 1000) {
 					prob.updatedAt = getNowDate();
 					this.showToast('故障标题已同步更新');
 				} else {
-					this.showToast(res.msg || '标题更新失败');
+					this.showToast(res?.msg || '标题更新失败');
 				}
 			} catch (err) {
 				console.error('update title error:', err);
@@ -851,7 +937,6 @@ export default {
 			}
 		},
 
-		// ======== 完成编辑排查思路：带上 prob.id 发送更新请求 ========
 		async finishEditSolution(prob) {
 			if (this.editSolutionId !== prob.id) return;
 			this.editSolutionId = null;
@@ -859,17 +944,18 @@ export default {
 			this.apiLoading = true;
 			try {
 				const resp = await create_problems({
-					id: prob.id,                   // 明确携带 ID：后端判定为 UPDATE
+					id: prob.id,
 					category_id: prob.categoryId,
 					title: prob.title,
-					solution: prob.solution.trim()
+					solution: prob.solution.trim(),
+					is_shared: prob.isShared
 				});
-				const res = resp.data?.code !== undefined ? resp.data : resp;
-				if (res.code === 1000) {
+				const res = resp?.data?.code !== undefined ? resp.data : resp;
+				if (res && res.code === 1000) {
 					prob.updatedAt = getNowDate();
 					this.showToast('故障内容已同步更新');
 				} else {
-					this.showToast(res.msg || '内容更新失败');
+					this.showToast(res?.msg || '内容更新失败');
 				}
 			} catch (err) {
 				console.error('update solution error:', err);
@@ -879,27 +965,26 @@ export default {
 			}
 		},
 
-		// ======== 完成编辑分类名称：带上 cat.id 提交后端 ========
 		async finishEditCategory(cat) {
 			if (this.editCategoryId !== cat.id) return;
 			const targetId = cat.id;
 			const newName = this.editCategoryName.trim() || '未命名分类';
 			this.editCategoryId = null;
 
-			// 更新本地分类名称
 			cat.name = newName;
 
 			this.apiLoading = true;
 			try {
 				const resp = await create_categories({
-					id: targetId,               // 传入 id 供后端判断为更新（UPDATE）
-					name: newName
+					id: targetId,
+					name: newName,
+					is_shared: cat.is_shared
 				});
-				const res = resp.data?.code !== undefined ? resp.data : resp;
-				if (res.code === 1000) {
+				const res = resp?.data?.code !== undefined ? resp.data : resp;
+				if (res && res.code === 1000) {
 					this.showToast('目录名称已同步保存至后端');
 				} else {
-					this.showToast(res.msg || '分类更新失败');
+					this.showToast(res?.msg || '分类更新失败');
 				}
 			} catch (err) {
 				console.error('update category error:', err);
@@ -909,13 +994,55 @@ export default {
 			}
 		},
 
+		async handleCategoryShareChange(cat) {
+			try {
+				const resp = await create_categories({
+					id: cat.id,
+					name: cat.name,
+					is_shared: cat.is_shared
+				});
+				const res = resp?.data?.code !== undefined ? resp.data : resp;
+				if (res && res.code === 1000) {
+					this.showToast(`【${cat.name}】已${cat.is_shared ? '设置为公开共享' : '取消公开共享'}`);
+				} else {
+					cat.is_shared = !cat.is_shared;
+					this.showToast(res?.msg || '修改分类共享状态失败');
+				}
+			} catch (err) {
+				cat.is_shared = !cat.is_shared;
+				console.error('handleCategoryShareChange error:', err);
+				this.showToast('修改共享状态失败，网络异常');
+			}
+		},
+
+		async handleProblemShareChange(prob) {
+			try {
+				const resp = await create_problems({
+					id: prob.id,
+					category_id: prob.categoryId,
+					title: prob.title,
+					solution: prob.solution,
+					is_shared: prob.isShared
+				});
+				const res = resp?.data?.code !== undefined ? resp.data : resp;
+				if (res && res.code === 1000) {
+					this.showToast(`故障文档【${prob.title}】已${prob.isShared ? '设置为公开共享' : '设为私有'}`);
+				} else {
+					prob.isShared = !prob.isShared;
+					this.showToast(res?.msg || '修改文档共享状态失败');
+				}
+			} catch (err) {
+				prob.isShared = !prob.isShared;
+				console.error('handleProblemShareChange error:', err);
+				this.showToast('修改文档共享状态失败，网络异常');
+			}
+		},
+
 		handleCategoryCommand(command, cat) {
 			this.safeClosePopover(cat.id);
-			if (command === 'share') {
-				this.showToast(`【${cat.name}】的知识库分享链接已生成`);
-			} else if (command === 'rename') {
+			if (command === 'rename') {
 				this.editCategoryId = cat.id;
-				this.editCategoryName = cat.name; // 关键：初始化编辑输入框绑定值
+				this.editCategoryName = cat.name;
 				this.$nextTick(() => {
 					const inputRef = this.$refs['catInput_' + cat.id];
 					if (inputRef && inputRef[0]) inputRef[0].focus();
@@ -923,15 +1050,18 @@ export default {
 			}
 		},
 
-		// ======== 真实 API 接口封装方法 ========
 		async createCategories(name) {
 			try {
-				const resp = await create_categories({ name });
-				const res = resp.data?.code !== undefined ? resp.data : resp;
-				if (res.code === 1000 && res.data) {
+				const resp = await create_categories({ name, is_shared: false });
+				const res = resp?.data?.code !== undefined ? resp.data : resp;
+				if (res && res.code === 1000 && res.data) {
 					const newCat = {
-						id: res.data.id,
-						name: res.data.name
+						id: Number(res.data.id),
+						name: res.data.name,
+						is_shared: res.data.is_shared ?? false,
+						creator: res.data.creator || null,
+						createdAt: res.data.created_at || getNowDate(),
+						problems: []
 					};
 					this.categories.push(newCat);
 					this.activeCategoryId = newCat.id;
@@ -939,7 +1069,7 @@ export default {
 					this.showToast('知识库目录创建成功');
 					return newCat;
 				} else {
-					this.showToast(res.msg || '创建分类失败');
+					this.showToast(res?.msg || '创建分类失败');
 				}
 			} catch (err) {
 				console.error('createCategories error:', err);
@@ -950,28 +1080,40 @@ export default {
 		async getCategories(page = 1) {
 			try {
 				const resp = await get_categories({ page });
-				const res = resp.data?.code !== undefined ? resp.data : resp;
-				if (res.code === 1000 && Array.isArray(res.data)) {
-					this.categories = res.data.map(cat => ({
-						id: cat.id,
+				const res = resp?.data?.code !== undefined ? resp.data : resp;
+
+				if (res && (res.code === 1000 || res.code === 200)) {
+					const dataObj = res.data || {};
+					const rawList = Array.isArray(dataObj.list) ? dataObj.list : (Array.isArray(dataObj) ? dataObj : []);
+					
+					this.totalCategories = typeof dataObj.total === 'number' ? dataObj.total : rawList.length;
+
+					this.categories = rawList.map(cat => ({
+						id: Number(cat.id),
 						name: cat.name,
+						is_shared: cat.is_shared ?? false,
+						creatorId: cat.creator_id,
+						updatedById: cat.updated_by_id,
+						creator: cat.creator || null,
+						updatedBy: cat.updated_by || null,
 						createdAt: cat.created_at,
-						updatedAt: cat.updated_at
+						updatedAt: cat.updated_at,
+						problems: Array.isArray(cat.problems) ? cat.problems : []
 					}));
 
-					let allProblems = [];
-					res.data.forEach(cat => {
+					let tempProblems = [];
+					rawList.forEach(cat => {
 						if (cat.problems && Array.isArray(cat.problems)) {
 							cat.problems.forEach(p => {
-								allProblems.push(this.formatProblem(p));
+								tempProblems.push(this.formatProblem(p, cat.creator));
 							});
 						}
 					});
 
-					if (allProblems.length > 0) {
-						this.problems = allProblems;
+					if (this.problems.length === 0 && tempProblems.length > 0) {
+						this.problems = tempProblems;
 					}
-					return res.data;
+					return rawList;
 				}
 			} catch (err) {
 				console.error('getCategories error:', err);
@@ -982,16 +1124,27 @@ export default {
 		async getProblems(page = 1) {
 			this.apiLoading = true;
 			try {
-				const resp = await get_problems({ page });
-				const res = resp.data?.code !== undefined ? resp.data : resp;
-				if (res.code === 1000) {
-					if (typeof res.total === 'number') {
+				const params = {
+					page: page,
+					page_size: this.pageSize
+				};
+				if (this.activeCategoryId) {
+					params.category_id = Number(this.activeCategoryId);
+				}
+
+				const resp = await get_problems(params);
+				const res = resp?.data?.code !== undefined ? resp.data : resp;
+
+				if (res && (res.code === 1000 || res.code === 200)) {
+					const dataObj = res.data || {};
+
+					if (typeof dataObj.total === 'number') {
+						this.totalProblems = dataObj.total;
+					} else if (typeof res.total === 'number') {
 						this.totalProblems = res.total;
-					} else if (res.data && typeof res.data.total === 'number') {
-						this.totalProblems = res.data.total;
 					}
 
-					const list = Array.isArray(res.data) ? res.data : (res.data?.list || []);
+					const list = Array.isArray(dataObj.list) ? dataObj.list : (Array.isArray(dataObj) ? dataObj : []);
 					this.problems = list.map(p => this.formatProblem(p));
 					return list;
 				}
@@ -1003,24 +1156,32 @@ export default {
 			}
 		},
 
-		// 新建记录提交（不传 id）
 		async createProblems(payload) {
 			try {
 				const resp = await create_problems({
-					category_id: payload.categoryId,
+					category_id: Number(payload.categoryId),
 					title: payload.title,
-					solution: payload.solution
+					solution: payload.solution,
+					is_shared: true
 				});
-				const res = resp.data?.code !== undefined ? resp.data : resp;
-				if (res.code === 1000 && res.data) {
+				const res = resp?.data?.code !== undefined ? resp.data : resp;
+				if (res && res.code === 1000 && res.data) {
 					const newProb = this.formatProblem(res.data);
 					this.problems.unshift(newProb);
+
+					// 同步追加到分类底层的 problems 数组中，触发 docCount 响应式递增
+					const cat = this.categories.find(c => Number(c.id) === Number(payload.categoryId));
+					if (cat) {
+						if (!Array.isArray(cat.problems)) cat.problems = [];
+						cat.problems.unshift(res.data);
+					}
+
 					this.currentPage = 1;
 					this.cardDealKey = Date.now();
 					this.showToast('新故障记录发布成功');
 					return newProb;
 				} else {
-					this.showToast(res.msg || '新建故障记录失败');
+					this.showToast(res?.msg || '新建故障记录失败');
 				}
 			} catch (err) {
 				console.error('createProblems error:', err);
@@ -1028,20 +1189,58 @@ export default {
 			}
 		},
 
-		formatProblem(p) {
+		formatProblem(p, catCreator = null) {
+			const rawDate = p.updated_at || p.date || p.created_at;
+			let displayTime = getNowDate();
+			if (rawDate) {
+				displayTime = rawDate.replace('T', ' ').substring(0, 16);
+			}
+
+			let creatorObj = p.creator || null;
+			if (!creatorObj && catCreator && (p.creator_id === catCreator.id || !p.creator_id)) {
+				creatorObj = catCreator;
+			}
+
+			let updatedByObj = p.updated_by || null;
+			if (!updatedByObj) {
+				updatedByObj = creatorObj;
+			}
+
+			let editorsList = Array.isArray(p.editors) && p.editors.length > 0 ? p.editors : [];
+			if (editorsList.length === 0 && creatorObj) {
+				editorsList = [creatorObj];
+				if (updatedByObj && updatedByObj.id !== creatorObj.id) {
+					editorsList.push(updatedByObj);
+				}
+			}
+
+			let attachmentObj = null;
+			if (Array.isArray(p.file_url) && p.file_url.length > 0) {
+				const firstFile = p.file_url[0];
+				attachmentObj = {
+					id: firstFile.id,
+					name: firstFile.name,
+					url: firstFile.url,
+					uploader: firstFile.uploader || null
+				};
+			}
+
+			const catId = p.category_id || p.categoryId || (p.category ? p.category.id : null);
+			const catName = p.category ? p.category.name : '';
+
 			return {
 				id: p.id,
-				categoryId: p.category_id || p.categoryId,
-				title: p.title,
-				solution: p.solution,
-				updatedAt: p.updated_at 
-					? p.updated_at.split('T')[0] 
-					: (p.date ? p.date.split('T')[0] : getNowDate()),
-				attachment: (p.file_url && p.file_url.length > 0) ? {
-					id: p.file_url[0].id,
-					name: p.file_url[0].name,
-					url: p.file_url[0].url
-				} : null
+				categoryId: catId !== null && catId !== undefined ? Number(catId) : null,
+				categoryName: catName,
+				title: p.title || '',
+				solution: p.solution || '',
+				isShared: p.is_shared ?? true,
+				version: p.version || 1,
+				updatedAt: displayTime,
+				creator: creatorObj,
+				updatedBy: updatedByObj,
+				editors: editorsList,
+				attachment: attachmentObj
 			};
 		},
 
@@ -1049,14 +1248,14 @@ export default {
 			this.pageLoading = true;
 			try {
 				await this.getCategories(1);
-				if (this.problems.length === 0) {
-					await this.getProblems(1);
-				}
 				if (!this.activeCategoryId && this.categories.length > 0) {
 					this.activeCategoryId = this.categories[0].id;
 				}
+				if (this.activeCategoryId) {
+					await this.getProblems(1);
+				}
 			} catch (err) {
-				console.error(err);
+				console.error('fetchData error:', err);
 			} finally {
 				this.pageLoading = false;
 			}
@@ -1078,12 +1277,10 @@ export default {
 			this.$refs.hiddenFileInput.click();
 		},
 
-		// ======== 针对最新数据格式优化的文件上传 Handler ========
 		async handleFileUpload(event) {
 			const file = event.target.files[0];
 			if (!file || !this.uploadTargetProbId) return;
 
-			// 组装上传所需参数 FormData
 			const formData = new FormData();
 			formData.append('file', file);
 			formData.append('problem_id', this.uploadTargetProbId);
@@ -1091,32 +1288,29 @@ export default {
 			this.apiLoading = true;
 			try {
 				const resp = await upload_doc(formData);
-				const res = resp.data?.code !== undefined ? resp.data : resp;
+				const res = resp?.data?.code !== undefined ? resp.data : resp;
 
-				// 判断成功：支持 code === 1000 封装格式，或 Axios 拦截器剥离后直接返回对象格式
-				if (res.code === 1000 || res.url) {
-					// 提取文件对象数据 (优先使用 res.data，若无则直接使用 res)
+				if (res && (res.code === 1000 || res.url)) {
 					const fileData = (res.data && res.data.url) ? res.data : res;
 
 					const prob = this.problems.find(p => p.id === this.uploadTargetProbId);
 					if (prob) {
-						// 响应式更新前端绑定的附件对象信息
 						this.$set(prob, 'attachment', {
 							id: fileData.id,
 							name: fileData.name || file.name,
-							url: fileData.url
+							url: fileData.url,
+							uploader: fileData.uploader || null
 						});
 					}
 					this.showToast(`附件 ${fileData.name || file.name} 上传成功！`);
 				} else {
-					this.showToast(res.msg || '附件上传失败');
+					this.showToast(res?.msg || '附件上传失败');
 				}
 			} catch (e) {
 				console.error('upload_doc error:', e);
 				this.showToast('附件上传失败，网络或服务器异常');
 			} finally {
 				this.apiLoading = false;
-				// 清空 input 绑定的值，确保选择同名文件时仍可正常触发 @change
 				event.target.value = '';
 				this.uploadTargetProbId = null;
 			}
@@ -1136,19 +1330,18 @@ export default {
 			this.showToast('附件开始下载...');
 		},
 
-		// ======== 新增/优化：真正调用后端 del_doc 接口删除附件 ========
 		async removeAttachment(prob) {
 			if (!prob || !prob.id) return;
 			this.apiLoading = true;
 			try {
 				const resp = await del_doc({ id: prob.id });
-				const res = resp.data?.code !== undefined ? resp.data : resp;
+				const res = resp?.data?.code !== undefined ? resp.data : resp;
 
-				if (res.code === 1000) {
+				if (res && res.code === 1000) {
 					this.$set(prob, 'attachment', null);
 					this.showToast('附件已移除成功');
 				} else {
-					this.showToast(res.msg || '移除附件失败');
+					this.showToast(res?.msg || '移除附件失败');
 				}
 			} catch (e) {
 				console.error('del_doc error:', e);
@@ -1159,7 +1352,7 @@ export default {
 		},
 
 		getCategoryName(id) {
-			const cat = this.categories.find(c => c.id === id);
+			const cat = this.categories.find(c => Number(c.id) === Number(id));
 			return cat ? cat.name : '未知目录';
 		},
 
@@ -1219,8 +1412,10 @@ export default {
 
 			targetProblems.forEach((prob, idx) => {
 				const catName = this.getCategoryName(prob.categoryId);
+				const creatorName = prob.creator ? prob.creator.username : '未知';
+				const updaterName = prob.updatedBy ? prob.updatedBy.username : creatorName;
 				mdContent += `## ${idx + 1}. [${catName}] ${prob.title}\n`;
-				mdContent += `*最后更新于 ${prob.updatedAt || getNowDate()}*\n\n`;
+				mdContent += `*创建者：${creatorName} | 最近修改：${updaterName} | 更新时间：${prob.updatedAt || getNowDate()}*\n\n`;
 				mdContent += `**排查思路与解决方案：**\n\n\`\`\`bash\n${prob.solution}\n\`\`\`\n\n---\n\n`;
 			});
 
@@ -1243,7 +1438,6 @@ export default {
 			this.moveDialogVisible = true;
 		},
 
-		// ======== 新增/优化：真正调用 update_problems_categories 转移目录 ========
 		async confirmMoveProblem() {
 			if (!this.moveToCategoryId || !this.moveTargetProblem) {
 				this.showToast('请选择迁移的目标目录');
@@ -1252,18 +1446,30 @@ export default {
 			this.apiLoading = true;
 			try {
 				const targetId = this.moveTargetProblem.id;
-				const newCatId = this.moveToCategoryId;
+				const oldCatId = this.moveTargetProblem.categoryId;
+				const newCatId = Number(this.moveToCategoryId);
 
 				const resp = await update_problems_categories({
 					pid: targetId,
 					cid: newCatId
 				});
-				const res = resp.data?.code !== undefined ? resp.data : resp;
+				const res = resp?.data?.code !== undefined ? resp.data : resp;
 
-				if (res.code === 1000) {
+				if (res && res.code === 1000) {
 					const probIndex = this.problems.findIndex(p => p.id === targetId);
 					if (probIndex !== -1) {
 						this.problems[probIndex].categoryId = newCatId;
+					}
+
+					// 同步迁移分类底层 problems 中的数据，精准更新 docCount
+					const oldCat = this.categories.find(c => Number(c.id) === Number(oldCatId));
+					if (oldCat && Array.isArray(oldCat.problems)) {
+						oldCat.problems = oldCat.problems.filter(p => p.id !== targetId);
+					}
+					const newCat = this.categories.find(c => Number(c.id) === Number(newCatId));
+					if (newCat) {
+						if (!Array.isArray(newCat.problems)) newCat.problems = [];
+						newCat.problems.push(this.moveTargetProblem);
 					}
 
 					this.selectedProblemIds = this.selectedProblemIds.filter(id => id !== targetId);
@@ -1271,7 +1477,7 @@ export default {
 					this.moveDialogVisible = false;
 					this.showToast('文档已成功转移到指定新目录');
 				} else {
-					this.showToast(res.msg || '转移目录失败');
+					this.showToast(res?.msg || '转移目录失败');
 				}
 			} catch (e) {
 				console.error('update_problems_categories error:', e);
@@ -1281,17 +1487,48 @@ export default {
 			}
 		},
 
-		copySolution(text) {
+		convertMarkdownToPlainText(text) {
+			if (!text) return '';
+			let clean = text
+				.replace(/```[\s\S]*?```/g, (match) => {
+					return match.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '');
+				})
+				.replace(/`([^`]+)`/g, '$1')
+				.replace(/!\[(.*?)\]\(.*?\)/g, '$1')
+				.replace(/\[(.*?)\]\(.*?\)/g, '$1')
+				.replace(/^#{1,6}\s+/gm, '')
+				.replace(/^\s*>\s+/gm, '')
+				.replace(/(\*\*|__)(.*?)\1/g, '$2')
+				.replace(/(\*|_)(.*?)\1/g, '$2')
+				.replace(/~~(.*?)~~/g, '$1')
+				.replace(/^\s*[-*+]\s+/gm, '')
+				.replace(/^\s*\d+\.\s+/gm, '')
+				.replace(/^\s*[-*_]{3,}\s*$/gm, '')
+				.trim();
+			return clean;
+		},
+
+		handleCopyCommand(command, solutionText) {
+			if (!solutionText) return;
+			if (command === 'raw') {
+				this.copySolution(solutionText, '原文内容已成功复制到剪贴板');
+			} else if (command === 'plain') {
+				const plainText = this.convertMarkdownToPlainText(solutionText);
+				this.copySolution(plainText, '纯文本无格式内容已成功复制到剪贴板');
+			}
+		},
+
+		copySolution(text, customToastMsg = '内容已成功复制到剪贴板') {
 			if (!text) return;
 			if (navigator.clipboard && window.isSecureContext) {
 				navigator.clipboard.writeText(text).then(() => {
-					this.showToast('内容已成功复制到剪贴板');
-				}).catch(() => { this.fallbackCopy(text); });
+					this.showToast(customToastMsg);
+				}).catch(() => { this.fallbackCopy(text, customToastMsg); });
 			} else {
-				this.fallbackCopy(text);
+				this.fallbackCopy(text, customToastMsg);
 			}
 		},
-		fallbackCopy(text) {
+		fallbackCopy(text, customToastMsg = '内容已成功复制到剪贴板') {
 			const textArea = document.createElement("textarea");
 			textArea.value = text;
 			textArea.style.top = "0"; textArea.style.left = "0"; textArea.style.position = "fixed";
@@ -1299,7 +1536,7 @@ export default {
 			textArea.focus(); textArea.select();
 			try {
 				document.execCommand('copy');
-				this.showToast('代码内容已成功复制到剪贴板');
+				this.showToast(customToastMsg);
 			} catch (err) {
 				this.showToast('复制失败，请手动框选复制。');
 			}
@@ -1336,16 +1573,16 @@ export default {
 			this.apiLoading = true;
 			try {
 				if (targetType === 'category') {
-					const index = this.categories.findIndex(c => c.id === targetId);
+					const index = this.categories.findIndex(c => Number(c.id) === Number(targetId));
 					if (index !== -1) {
 						backupData = {
 							type: 'category', catIndex: index,
 							category: { ...this.categories[index] },
-							problems: this.problems.filter(p => p.categoryId === targetId)
+							problems: this.problems.filter(p => Number(p.categoryId) === Number(targetId))
 						};
 						this.categories.splice(index, 1);
-						this.problems = this.problems.filter(p => p.categoryId !== targetId);
-						if (this.activeCategoryId === targetId) {
+						this.problems = this.problems.filter(p => Number(p.categoryId) !== Number(targetId));
+						if (Number(this.activeCategoryId) === Number(targetId)) {
 							this.activeCategoryId = this.categories.length > 0 ? this.categories[0].id : null;
 						}
 					}
@@ -1353,10 +1590,18 @@ export default {
 				else if (targetType === 'problem') {
 					const index = this.problems.findIndex(p => p.id === targetId);
 					if (index !== -1) {
+						const deletedProb = this.problems[index];
 						backupData = {
-							type: 'problem', probIndex: index, problem: { ...this.problems[index] }
+							type: 'problem', probIndex: index, problem: { ...deletedProb }
 						};
 						this.problems.splice(index, 1);
+
+						// 同步从分类底层 problems 移除，触发 docCount 响应式递减
+						const cat = this.categories.find(c => Number(c.id) === Number(deletedProb.categoryId));
+						if (cat && Array.isArray(cat.problems)) {
+							cat.problems = cat.problems.filter(p => p.id !== targetId);
+						}
+
 						this.selectedProblemIds = this.selectedProblemIds.filter(sid => sid !== targetId);
 					}
 				}
@@ -1397,6 +1642,10 @@ export default {
 				}
 				else if (backupData.type === 'problem') {
 					this.problems.splice(backupData.probIndex, 0, backupData.problem);
+					const cat = this.categories.find(c => Number(c.id) === Number(backupData.problem.categoryId));
+					if (cat && Array.isArray(cat.problems)) {
+						cat.problems.unshift(backupData.problem);
+					}
 					this.activeCategoryId = backupData.problem.categoryId;
 				}
 			} finally {
@@ -1803,6 +2052,12 @@ export default {
 	text-overflow: ellipsis;
 }
 
+.shared-icon-tag {
+	margin-left: 6px;
+	font-size: 12px;
+	color: var(--primary-blue);
+}
+
 .menu-badge {
 	margin-left: 8px;
 	font-size: 11px;
@@ -1874,6 +2129,13 @@ export default {
 	align-items: flex-end;
 }
 
+.category-badge-group {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-bottom: 8px;
+}
+
 .category-badge {
 	display: inline-block;
 	font-size: 12px;
@@ -1881,7 +2143,23 @@ export default {
 	color: var(--primary-blue);
 	letter-spacing: 1px;
 	text-transform: uppercase;
-	margin-bottom: 8px;
+}
+
+.category-creator-badge {
+	font-size: 11px;
+	font-weight: 500;
+	color: var(--text-muted);
+	background-color: var(--hover-sidebar);
+	padding: 2px 8px;
+	border-radius: 12px;
+	border: 1px solid var(--border-color);
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.category-creator-badge i {
+	color: var(--primary-blue);
 }
 
 .category-title {
@@ -1909,7 +2187,6 @@ export default {
 	margin-top: 0;
 }
 
-/* ================= 3. 分类切换“先隐后现”平滑动画类 ================= */
 .category-switch-enter-active {
 	transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -1926,7 +2203,6 @@ export default {
 	transform: translateY(-8px);
 }
 
-/* ================= 4. 故障卡牌速查视图 (发牌特效每行5列) ================= */
 .card-deck-wrapper {
 	margin-bottom: 32px;
 	background-color: rgba(14, 165, 233, 0.03);
@@ -1978,13 +2254,11 @@ export default {
 
 .card-deck-grid {
 	display: grid;
-	/* 每行精确5列排列 */
 	grid-template-columns: repeat(5, 1fr);
 	gap: 12px;
 	margin-top: 8px;
 }
 
-/* 发牌卡牌卡片 */
 .deck-card {
 	background-color: var(--bg-card);
 	border: 1px solid var(--border-color);
@@ -2000,12 +2274,10 @@ export default {
 	overflow: hidden;
 	transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s, border-color 0.25s;
 
-	/* 阶梯式连续“发牌”落牌动画 */
 	animation: dealCard 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
 	animation-delay: calc(var(--card-index) * 0.045s);
 }
 
-/* 发卡牌 Keyframes */
 @keyframes dealCard {
 	0% {
 		opacity: 0;
@@ -2096,7 +2368,6 @@ export default {
 	}
 }
 
-/* ================= 5. 快捷置顶 / 置底悬浮胶囊工具栏 ================= */
 .quick-scroll-widget {
 	position: fixed;
 	right: 36px;
@@ -2298,7 +2569,6 @@ export default {
 	overflow: hidden;
 }
 
-/* 锚点直达高亮动画 */
 .problem-card.is-target-highlight {
 	animation: cardTargetPulse 2.2s ease-in-out;
 }
@@ -2434,7 +2704,125 @@ export default {
 }
 
 .card-body {
-	padding: 24px;
+	padding: 20px 24px 24px 24px;
+}
+
+.doc-meta-bar {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px 12px;
+	margin-bottom: 16px;
+	padding: 6px 12px;
+	background-color: var(--hover-sidebar);
+	border-radius: 8px;
+	font-size: 12px;
+	border: 1px solid var(--border-color);
+}
+
+.meta-item {
+	display: flex;
+	align-items: center;
+	color: var(--text-muted);
+}
+
+.meta-item i {
+	margin-right: 4px;
+	font-size: 13px;
+	color: var(--primary-blue);
+}
+
+.meta-label {
+	color: var(--text-muted);
+	font-size: 12px;
+}
+
+.meta-value {
+	font-weight: 600;
+	color: var(--text-h1);
+}
+
+.author-name {
+	color: #10b981;
+}
+
+.updater-name {
+	color: #0ea5e9;
+}
+
+.meta-divider {
+	width: 1px;
+	height: 12px;
+	background-color: var(--border-color);
+}
+
+.editors-trigger {
+	display: inline-flex;
+	align-items: center;
+	cursor: pointer;
+	color: var(--text-p);
+	font-weight: 500;
+	transition: color 0.2s;
+}
+
+.editors-trigger:hover {
+	color: var(--primary-blue);
+}
+
+.editor-badge {
+	margin-right: 2px;
+}
+
+.more-count {
+	font-size: 11px;
+	background-color: var(--border-color);
+	color: var(--text-muted);
+	padding: 0 4px;
+	border-radius: 4px;
+	margin-left: 4px;
+}
+
+.meta-version-badge {
+	margin-left: auto;
+	font-size: 11px;
+	font-weight: 700;
+	font-family: monospace;
+	background: linear-gradient(135deg, rgba(14, 165, 233, 0.15), rgba(99, 102, 241, 0.15));
+	color: var(--primary-blue);
+	padding: 1px 6px;
+	border-radius: 4px;
+	border: 1px solid rgba(14, 165, 233, 0.2);
+}
+
+.editors-popover-content {
+	padding: 6px 4px;
+}
+
+.editors-title {
+	font-size: 12px;
+	font-weight: 700;
+	color: var(--text-h1);
+	margin-bottom: 8px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.editors-tag-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.editor-chip {
+	font-size: 11px;
+	background-color: var(--active-sidebar);
+	color: var(--primary-blue);
+	padding: 2px 8px;
+	border-radius: 12px;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
 }
 
 .solution-header {
@@ -2940,6 +3328,21 @@ export default {
 	font-weight: 500;
 }
 
+.switch-action-item {
+	justify-content: space-between;
+	cursor: default;
+}
+
+.switch-item-left {
+	display: flex;
+	align-items: center;
+}
+
+.switch-item-left i {
+	margin-right: 10px;
+	font-size: 16px;
+}
+
 .action-item i {
 	margin-right: 10px;
 	font-size: 16px;
@@ -2977,13 +3380,15 @@ export default {
 	box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
 }
 
-.custom-dark-popover .action-item {
-	color: #cbd5e1;
+.custom-dark-popover .action-item,
+.custom-dark-popover .el-dropdown-menu__item {
+	color: #cbd5e1 !important;
 }
 
-.custom-dark-popover .action-item:hover {
-	background-color: #27272a;
-	color: #38bdf8;
+.custom-dark-popover .action-item:hover:not(.switch-action-item),
+.custom-dark-popover .el-dropdown-menu__item:hover {
+	background-color: #27272a !important;
+	color: #38bdf8 !important;
 }
 
 .custom-dark-popover .action-divider {
@@ -3002,13 +3407,15 @@ export default {
 	border: 1px solid #e2e8f0 !important;
 }
 
-.custom-light-popover .action-item {
-	color: #334155;
+.custom-light-popover .action-item,
+.custom-light-popover .el-dropdown-menu__item {
+	color: #334155 !important;
 }
 
-.custom-light-popover .action-item:hover {
-	background-color: #f1f5f9;
-	color: #0ea5e9;
+.custom-light-popover .action-item:hover:not(.switch-action-item),
+.custom-light-popover .el-dropdown-menu__item:hover {
+	background-color: #f1f5f9 !important;
+	color: #0ea5e9 !important;
 }
 
 .custom-light-popover .action-divider {

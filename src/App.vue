@@ -1,9 +1,9 @@
 <template>
 	<div id="app">
-		<!-- 1. 控制总开关：如果有授权口令 (isAuth为true)，渲染主页面/文档库内容 -->
+		<!-- 1. 控制总开关：如果有授权 token/sign，渲染主页面/文档库内容 -->
 		<router-view v-if="isAuth" />
 
-		<!-- 2. 全局文档密码拦截验证终端 (毛玻璃暗黑科技风) -->
+		<!-- 2. 全局文档终端登录验证层 (毛玻璃暗黑科技风) -->
 		<transition name="auth-fade">
 			<div v-if="dialogVisible" class="auth-fullscreen-overlay">
 				<!-- 背景网格与高感光晕 -->
@@ -17,7 +17,7 @@
 					<!-- 顶部安全防护徽章 -->
 					<div class="security-badge">
 						<i class="el-icon-shield"></i>
-						<span>DOCUMENT VAULT PROTECTED</span>
+						<span>DOCUMENT VAULT ACCESS</span>
 					</div>
 
 					<!-- 卡片头部标题区 -->
@@ -27,38 +27,61 @@
 							<div class="icon-pulse"></div>
 						</div>
 						<h2 class="title">{{ secret_dia_title }}</h2>
-						<p class="subtitle">受保护的故障知识库，请输入密钥访问</p>
+						<p class="subtitle">受保护的故障知识库，请输入凭载登录</p>
 					</div>
 
-					<!-- 输入框区 -->
+					<!-- 表单输入框区 -->
 					<div class="card-body">
-						<el-form @submit.native.prevent="start">
-							<el-input 
-								ref="secretInput" 
-								v-model="secret_key" 
-								type="password" 
-								placeholder="请输入终端访问口令..." 
-								clearable 
-								show-password 
-								prefix-icon="el-icon-key"
-								@keyup.enter.native="start">
-							</el-input>
+						<el-form :model="loginForm" :rules="loginRules" ref="loginForm" @submit.native.prevent="handleLogin">
+							<!-- 用户名 -->
+							<el-form-item prop="username">
+								<el-input 
+									ref="usernameInput"
+									v-model="loginForm.username" 
+									placeholder="请输入用户名 / 账号" 
+									clearable 
+									prefix-icon="el-icon-user"
+									@keyup.enter.native="focusPassword">
+								</el-input>
+							</el-form-item>
+
+							<!-- 密码 -->
+							<el-form-item prop="password">
+								<el-input 
+									ref="passwordInput"
+									v-model="loginForm.password" 
+									type="password" 
+									placeholder="请输入登录密码" 
+									clearable 
+									show-password 
+									prefix-icon="el-icon-key"
+									@keyup.enter.native="handleLogin">
+								</el-input>
+							</el-form-item>
 						</el-form>
 					</div>
 
-					<!-- 底部提交操作区 -->
+					<!-- 底部提交与注册操作区 -->
 					<div class="card-footer">
 						<el-button 
 							class="unlock-btn" 
 							:loading="secret_loading" 
-							@click="start" 
+							@click="handleLogin" 
 							tabindex="0">
-							<span>{{ secret_loading ? '密钥校验中...' : '安全解锁并接入' }}</span>
+							<span>{{ secret_loading ? '身份校验中...' : '安全登录并接入' }}</span>
 							<i v-if="!secret_loading" class="el-icon-right arrow-icon"></i>
 						</el-button>
 
+						<!-- 新增注册入口按钮区 -->
+						<div class="action-links">
+							<span class="tip-text">还没有账号？</span>
+							<el-button type="text" class="register-btn" @click="goRegister">
+								<i class="el-icon-user-solid"></i> 立即注册新账号
+							</el-button>
+						</div>
+
 						<div class="footer-tips">
-							<i class="el-icon-info"></i> 支持 Enter 键快速解锁
+							<i class="el-icon-info"></i> 支持 Enter 键快速登录
 						</div>
 					</div>
 				</div>
@@ -75,12 +98,23 @@ export default {
 	name: 'App',
 	data() {
 		return {
-			isAuth: false, // 授权状态拦截开关
+			isAuth: false,
 			dialogVisible: false,
 			secret_dia_title: 'TroubleDocs 故障文档库',
-			secret_key: '',
 			secret_loading: false,
-			isErrorShake: false // 控制输入错误抖动动画
+			isErrorShake: false,
+			loginForm: {
+				username: '',
+				password: ''
+			},
+			loginRules: {
+				username: [
+					{ required: true, message: '请输入用户名', trigger: 'blur' }
+				],
+				password: [
+					{ required: true, message: '请输入密码', trigger: 'blur' }
+				]
+			}
 		};
 	},
 	created() {
@@ -88,7 +122,7 @@ export default {
 	},
 	mounted() {
 		if (this.dialogVisible) {
-			this.focusInput();
+			this.focusUsername();
 		}
 	},
 	watch: {
@@ -97,23 +131,37 @@ export default {
 		},
 		dialogVisible(val) {
 			if (val) {
-				this.focusInput();
+				this.focusUsername();
 			}
 		}
 	},
 	methods: {
-		// 自动聚焦输入框
-		focusInput() {
+		// 自动聚焦用户名框
+		focusUsername() {
 			this.$nextTick(() => {
-				if (this.$refs.secretInput) {
-					this.$refs.secretInput.focus();
+				if (this.$refs.usernameInput) {
+					this.$refs.usernameInput.focus();
 				}
 			});
 		},
 
-		// 检查本地 Sign 状态
+		// 聚焦密码框
+		focusPassword() {
+			if (this.$refs.passwordInput) {
+				this.$refs.passwordInput.focus();
+			}
+		},
+
+		// 检查本地登录 Token/Sign 状态
 		checkSign() {
-			const sign = localStorage.getItem('sign');
+			// 如果当前处于注册路由页面，不弹窗拦截
+			if (this.$route && this.$route.path === '/register') {
+				this.isAuth = true;
+				this.dialogVisible = false;
+				return;
+			}
+
+			const sign = localStorage.getItem('sign') || localStorage.getItem('token');
 			if (sign) {
 				this.isAuth = true;
 				this.dialogVisible = false;
@@ -123,7 +171,7 @@ export default {
 			}
 		},
 
-		// 触发错误抖动效果
+		// 触发卡片错误抖动
 		triggerShake() {
 			this.isErrorShake = true;
 			setTimeout(() => {
@@ -131,34 +179,52 @@ export default {
 			}, 600);
 		},
 
-		// 解锁验证主逻辑
-		async start() {
-			let sign = localStorage.getItem('sign');
+		// 跳转/触发注册页面
+		goRegister() {
+			this.dialogVisible = false;
+			// 配合 Vue Router 跳转到 /register 注册页
+			if (this.$router && this.$route.path !== '/register') {
+				this.$router.push('/register');
+			}
+		},
 
-			// 如果本地没有存储口令，走 API 校验
+		// 登录校验主逻辑
+		async handleLogin() {
+			let sign = localStorage.getItem('sign') || localStorage.getItem('token');
+
 			if (!sign) {
-				if (!this.secret_key || !this.secret_key.trim()) {
-					Message.error({ message: "请输入访问口令", center: true });
+				// 表单校验
+				let isValid = false;
+				this.$refs.loginForm.validate((valid) => {
+					isValid = valid;
+				});
+
+				if (!isValid) {
 					this.triggerShake();
-					this.focusInput();
 					return;
 				}
 
 				this.secret_loading = true;
 				try {
-					const response = await login_auth({ sign: this.secret_key.trim() });
+					const payload = {
+						username: this.loginForm.username.trim(),
+						password: this.loginForm.password.trim()
+					};
+					const response = await login_auth(payload);
 					const resData = response && response.data ? response.data : response;
 
-					if (resData && resData.code == 1000) {
-						// 验证通过，写入 localStorage
-						localStorage.setItem('sign', this.secret_key.trim());
-						Message.success({ message: resData.msg || "身份验证通过，欢迎使用文档库", center: true });
+					if (resData && (resData.code == 1000 || resData.token)) {
+						const tokenVal = resData.token || resData.data?.token || 'AUTH_TOKEN_SUCCESS';
+						const uid = resData.uid || resData.data?.uid || 'AUTH_TOKEN_SUCCESS';
+						localStorage.setItem('sign', tokenVal);
+						localStorage.setItem('username', this.loginForm.username.trim());
+						localStorage.setItem('uid', uid);
+						Message.success({ message: resData.msg || "登录成功，欢迎使用文档库", center: true });
 					} else {
-						Message.error({ message: (resData && resData.msg) || "访问口令无效", center: true });
+						Message.error({ message: (resData && resData.msg) || "用户名或密码错误", center: true });
 						this.secret_loading = false;
 						this.triggerShake();
-						this.secret_key = ''; // 校验失败自动清空
-						this.focusInput();
+						this.loginForm.password = ''; // 校验失败清空密码
 						return;
 					}
 				} catch (error) {
@@ -169,7 +235,7 @@ export default {
 				}
 			}
 
-			// 授权成功，放行渲染路由页面并关闭验证弹窗
+			// 授权通过
 			this.isAuth = true;
 			this.secret_loading = false;
 			this.dialogVisible = false;
@@ -207,22 +273,19 @@ body {
 	display: flex;
 	justify-content: center;
 	align-items: center;
-	z-index: 1999; /* 低于 Element Message 消息层(2000+) */
+	z-index: 1999;
 	overflow: hidden;
 
-	/* 背景科技点阵网格 */
 	.bg-grid-pattern {
 		position: absolute;
 		width: 100%;
 		height: 100%;
-		background-image: 
-			radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+		background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
 		background-size: 32px 32px;
 		z-index: 1;
 		pointer-events: none;
 	}
 
-	/* 柔和背景光晕 */
 	.glow-orb {
 		position: absolute;
 		width: 500px;
@@ -245,17 +308,16 @@ body {
 		}
 	}
 
-	/* 核心 Glassmorphic 验证卡片 */
 	.auth-card {
 		position: relative;
 		z-index: 10;
-		width: 400px;
+		width: 410px;
 		background: rgba(18, 24, 38, 0.75);
 		backdrop-filter: blur(20px);
 		-webkit-backdrop-filter: blur(20px);
 		border: 1px solid rgba(255, 255, 255, 0.1);
 		border-radius: 20px;
-		padding: 40px 36px 32px;
+		padding: 38px 36px 28px;
 		box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.15);
 		transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 
@@ -264,7 +326,6 @@ body {
 			box-shadow: 0 30px 70px rgba(0, 0, 0, 0.7), 0 0 30px rgba(14, 165, 233, 0.1);
 		}
 
-		/* 顶部 Badge */
 		.security-badge {
 			display: inline-flex;
 			align-items: center;
@@ -277,23 +338,22 @@ body {
 			font-size: 11px;
 			font-weight: 700;
 			letter-spacing: 1px;
-			margin-bottom: 24px;
+			margin-bottom: 20px;
 
 			i {
 				font-size: 13px;
 			}
 		}
 
-		/* 头部标题与 Icon */
 		.card-header {
 			text-align: center;
-			margin-bottom: 30px;
+			margin-bottom: 24px;
 
 			.lock-icon-box {
 				position: relative;
-				width: 64px;
-				height: 64px;
-				margin: 0 auto 18px;
+				width: 60px;
+				height: 60px;
+				margin: 0 auto 16px;
 				background: linear-gradient(135deg, rgba(14, 165, 233, 0.2), rgba(99, 102, 241, 0.2));
 				border: 1px solid rgba(56, 189, 248, 0.3);
 				border-radius: 18px;
@@ -301,7 +361,7 @@ body {
 				align-items: center;
 				justify-content: center;
 				color: #38bdf8;
-				font-size: 28px;
+				font-size: 26px;
 
 				.icon-pulse {
 					position: absolute;
@@ -319,31 +379,32 @@ body {
 				color: #f8fafc;
 				font-size: 22px;
 				font-weight: 700;
-				letter-spacing: -0.3px;
 			}
 
 			.subtitle {
-				margin: 8px 0 0;
+				margin: 6px 0 0;
 				color: #94a3b8;
 				font-size: 13px;
-				line-height: 1.5;
 			}
 		}
 
-		/* Element UI 输入框深度自定义 */
 		.card-body {
-			margin-bottom: 24px;
+			margin-bottom: 8px;
+
+			.el-form-item {
+				margin-bottom: 18px;
+			}
 
 			::v-deep .el-input__inner {
 				background-color: rgba(10, 15, 26, 0.8) !important;
 				border: 1px solid #27272a !important;
 				color: #f8fafc !important;
-				height: 50px;
-				line-height: 50px;
-				font-size: 15px;
+				height: 48px;
+				line-height: 48px;
+				font-size: 14px;
 				border-radius: 10px;
 				padding-left: 42px !important;
-				transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+				transition: all 0.3s ease;
 
 				&:focus {
 					border-color: #38bdf8 !important;
@@ -360,8 +421,8 @@ body {
 				color: #64748b;
 
 				i {
-					line-height: 50px;
-					font-size: 18px;
+					line-height: 48px;
+					font-size: 17px;
 				}
 			}
 
@@ -369,7 +430,7 @@ body {
 				right: 12px;
 
 				i {
-					line-height: 50px;
+					line-height: 48px;
 					font-size: 16px;
 					color: #64748b;
 
@@ -380,11 +441,10 @@ body {
 			}
 		}
 
-		/* 底部按钮与提示 */
 		.card-footer {
 			.unlock-btn {
 				width: 100%;
-				height: 50px;
+				height: 48px;
 				background: linear-gradient(135deg, #0ea5e9, #6366f1) !important;
 				border: none !important;
 				color: #ffffff !important;
@@ -396,11 +456,6 @@ body {
 				display: flex;
 				justify-content: center;
 				align-items: center;
-
-				span {
-					display: flex;
-					align-items: center;
-				}
 
 				.arrow-icon {
 					margin-left: 8px;
@@ -416,51 +471,53 @@ body {
 						transform: translateX(4px);
 					}
 				}
+			}
 
-				&:active {
-					transform: translateY(0);
+			/* 注册按钮栏 */
+			.action-links {
+				margin-top: 16px;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				font-size: 13px;
+
+				.tip-text {
+					color: #64748b;
 				}
 
-				&.is-loading {
-					opacity: 0.8;
+				.register-btn {
+					color: #38bdf8 !important;
+					font-weight: 600;
+					padding: 0 4px !important;
+					font-size: 13px;
+
+					&:hover {
+						color: #7dd3fc !important;
+						text-decoration: underline;
+					}
 				}
 			}
 
 			.footer-tips {
-				margin-top: 18px;
+				margin-top: 14px;
 				text-align: center;
-				color: #64748b;
+				color: #475569;
 				font-size: 12px;
 				display: flex;
 				align-items: center;
 				justify-content: center;
 				gap: 4px;
-
-				i {
-					font-size: 13px;
-				}
 			}
 		}
 	}
 }
 
-/* 呼吸脉冲动画 */
 @keyframes pulse-ring {
-	0% {
-		transform: scale(0.95);
-		opacity: 0.8;
-	}
-	50% {
-		transform: scale(1.15);
-		opacity: 0;
-	}
-	100% {
-		transform: scale(0.95);
-		opacity: 0;
-	}
+	0% { transform: scale(0.95); opacity: 0.8; }
+	50% { transform: scale(1.15); opacity: 0; }
+	100% { transform: scale(0.95); opacity: 0; }
 }
 
-/* 错误抖动 Shake 动画 */
 .shake-anim {
 	animation: card-shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
@@ -472,7 +529,6 @@ body {
 	40%, 60% { transform: translate3d(4px, 0, 0); }
 }
 
-/* 渐隐进场/退场动画 */
 .auth-fade-enter-active,
 .auth-fade-leave-active {
 	transition: opacity 0.4s ease, transform 0.4s ease;
