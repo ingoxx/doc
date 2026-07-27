@@ -93,20 +93,24 @@
 							:visible-arrow="false"
 							:popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 							<div class="action-menu-list">
-								<div class="action-item switch-action-item" @click.stop>
-									<div class="switch-item-left">
-										<i class="el-icon-share"></i>
-										<span>公开共享分类</span>
+								<!-- 仅当当前登录用户为分类创建者时，才展示公开共享开关 -->
+								<template v-if="canManageShare(cat)">
+									<div class="action-item switch-action-item" @click.stop>
+										<div class="switch-item-left">
+											<i class="el-icon-share"></i>
+											<span>公开共享分类</span>
+										</div>
+										<el-switch
+											v-model="cat.is_shared"
+											size="mini"
+											active-color="#0ea5e9"
+											@change="handleCategoryShareChange(cat)"
+											@click.native.stop>
+										</el-switch>
 									</div>
-									<el-switch
-										v-model="cat.is_shared"
-										size="mini"
-										active-color="#0ea5e9"
-										@change="handleCategoryShareChange(cat)"
-										@click.native.stop>
-									</el-switch>
-								</div>
-								<div class="action-divider"></div>
+									<div class="action-divider"></div>
+								</template>
+
 								<div class="action-item" @click.stop="handleCategoryCommand('rename', cat)">
 									<i class="el-icon-edit"></i> <span>重命名分类</span>
 								</div>
@@ -297,7 +301,7 @@
 										</div>
 
 										<div class="card-body" @click.stop>
-											<!-- 故障文档人员信息元数据栏（创建者、更新者、编辑参与人、共享状态、版本） -->
+											<!-- 故障文档人员信息元数据栏 -->
 											<div class="doc-meta-bar">
 												<div class="meta-item creator" title="文档创建者">
 													<i class="el-icon-user-solid"></i>
@@ -340,17 +344,21 @@
 
 												<div class="meta-divider"></div>
 
-												<!-- 故障文档 is_shared 共享状态开关 -->
-												<div class="meta-item share-switch-item" title="切换文档公开共享状态">
+												<!-- 故障文档 is_shared 共享状态开关 (仅创建者展示 Switch 开关，非创建者仅展示只读标签) -->
+												<div class="meta-item share-switch-item" :title="canManageShare(prob) ? '切换文档公开共享状态' : '文档公开共享状态'">
 													<i class="el-icon-share"></i>
 													<span class="meta-label">公开：</span>
 													<el-switch
+														v-if="canManageShare(prob)"
 														v-model="prob.isShared"
 														size="mini"
 														active-color="#0ea5e9"
 														@change="handleProblemShareChange(prob)"
 														@click.native.stop>
 													</el-switch>
+													<span v-else class="read-only-share-tag" :class="{ 'is-public': prob.isShared }">
+														{{ prob.isShared ? '公开' : '私有' }}
+													</span>
 												</div>
 
 												<div class="meta-version-badge" v-if="prob.version">
@@ -576,6 +584,11 @@ import {
 	del_doc,
 } from '../../api';
 
+import {
+	Message,
+	MessageBox
+} from 'element-ui';
+
 marked.setOptions({
 	gfm: true,
 	breaks: true,
@@ -652,7 +665,7 @@ export default {
 			highlightTimer: null,
 
 			currentPage: 1,
-			pageSize: 10,
+			pageSize: 5,
 			totalProblems: 0,
 			totalCategories: 0,
 
@@ -699,6 +712,21 @@ export default {
 		}
 	},
 	computed: {
+		// ======== 获取当前系统登录用户信息 ========
+		currentUser() {
+			try {
+				const userStr = localStorage.getItem('userInfo') || localStorage.getItem('user');
+				if (userStr) {
+					return JSON.parse(userStr);
+				}
+			} catch (e) {
+				console.error('parse currentUser error:', e);
+			}
+			return {
+				id: Number(localStorage.getItem('userId') || localStorage.getItem('uid') || 0),
+				username: localStorage.getItem('username') || localStorage.getItem('sign') || ''
+			};
+		},
 		filteredCategories() {
 			let result = this.categories;
 			if (this.searchCategoryQuery) {
@@ -715,7 +743,6 @@ export default {
 				};
 			});
 		},
-		// 直接从包含 docCount 的 filteredCategories 映射当前选中分类
 		currentCategory() {
 			if (!this.activeCategoryId) return null;
 			return this.filteredCategories.find(c => Number(c.id) === Number(this.activeCategoryId)) || null;
@@ -742,17 +769,13 @@ export default {
 		paginatedProblems() {
 			return this.currentProblems;
 		},
-		// ======== 核心优化：右侧分页器的 total 值优先使用选中分类的 docCount ========
 		computedTotalProblems() {
-			// 1. 如果在右侧搜索框输入了查询关键词，以搜索过滤后的实际列表条数为准
 			if (this.searchProblemQuery) {
 				return this.currentProblems.length;
 			}
-			// 2. 无搜索词时，直接使用左侧选中分类徽章中的 docCount 的值
 			if (this.currentCategory && typeof this.currentCategory.docCount === 'number') {
 				return this.currentCategory.docCount;
 			}
-			// 3. 兜底逻辑：接口返回的 totalProblems 或当前渲染数组长度
 			if (typeof this.totalProblems === 'number' && this.totalProblems > 0) {
 				return this.totalProblems;
 			}
@@ -786,6 +809,38 @@ export default {
 		await this.fetchData();
 	},
 	methods: {
+		// ======== 核心方法：校验当前登录用户是否为该分类/文档的创建者 ========
+		canManageShare(item) {
+			if (!item) return false;
+			const curUser = this.currentUser;
+			if (!curUser) return false;
+
+			// 提取分类或文档关联的创建者信息
+			const creator = item.creator || {};
+			const creatorId = item.creatorId || item.creator_id || creator.id;
+			const creatorUsername = creator.username || item.creatorName || '';
+
+			// 提取当前登录用户 ID 和 Username
+			const curUserId = curUser.id || curUser.userId || curUser.uid;
+			const curUsername = curUser.username || curUser.name || curUser.sign || '';
+
+			// 1. 优先校验 ID
+			if (curUserId !== undefined && curUserId !== null && creatorId !== undefined && creatorId !== null) {
+				if (Number(curUserId) === Number(creatorId)) {
+					return true;
+				}
+			}
+
+			// 2. 兜底校验用户名
+			if (curUsername && creatorUsername) {
+				if (String(curUsername).trim().toLowerCase() === String(creatorUsername).trim().toLowerCase()) {
+					return true;
+				}
+			}
+
+			return false;
+		},
+
 		handleScroll(e) {
 			const scrollTop = e.target.scrollTop;
 			this.showScrollButtons = scrollTop > 150;
@@ -869,17 +924,20 @@ export default {
 		},
 
 		handleUserCommand(command) {
-			if (command === 'history') {
-				this.showToast('正在加载操作历史记录...');
-			} else if (command === 'logout') {
-				this.$confirm('确认要退出 TroubleDocs 文档系统吗？', '提示', {
-					confirmButtonText: '确认退出',
-					cancelButtonText: '取消',
-					type: 'warning'
-				}).then(() => {
-					this.showToast('已安全退出系统');
-				}).catch(() => {});
-			}
+			MessageBox.confirm('确定要退出当前系统吗?', '退出确认', {
+				confirmButtonText: '安全退出',
+				cancelButtonText: '取消',
+				type: 'warning',
+				customClass: 'custom-logout-confirm'
+			}).then(() => {
+				localStorage.removeItem('sign');
+				localStorage.removeItem('userInfo');
+				localStorage.removeItem('user');
+				Message.success('已退出系统');
+				setTimeout(() => {
+					window.location.reload();
+				}, 500);
+			}).catch(() => {});
 		},
 
 		isMarkdown(text) {
@@ -1137,7 +1195,8 @@ export default {
 
 				if (res && (res.code === 1000 || res.code === 200)) {
 					const dataObj = res.data || {};
-
+					console.log("dataObj >>> ", dataObj);
+						
 					if (typeof dataObj.total === 'number') {
 						this.totalProblems = dataObj.total;
 					} else if (typeof res.total === 'number') {
@@ -1169,7 +1228,6 @@ export default {
 					const newProb = this.formatProblem(res.data);
 					this.problems.unshift(newProb);
 
-					// 同步追加到分类底层的 problems 数组中，触发 docCount 响应式递增
 					const cat = this.categories.find(c => Number(c.id) === Number(payload.categoryId));
 					if (cat) {
 						if (!Array.isArray(cat.problems)) cat.problems = [];
@@ -1461,7 +1519,6 @@ export default {
 						this.problems[probIndex].categoryId = newCatId;
 					}
 
-					// 同步迁移分类底层 problems 中的数据，精准更新 docCount
 					const oldCat = this.categories.find(c => Number(c.id) === Number(oldCatId));
 					if (oldCat && Array.isArray(oldCat.problems)) {
 						oldCat.problems = oldCat.problems.filter(p => p.id !== targetId);
@@ -1596,7 +1653,6 @@ export default {
 						};
 						this.problems.splice(index, 1);
 
-						// 同步从分类底层 problems 移除，触发 docCount 响应式递减
 						const cat = this.categories.find(c => Number(c.id) === Number(deletedProb.categoryId));
 						if (cat && Array.isArray(cat.problems)) {
 							cat.problems = cat.problems.filter(p => p.id !== targetId);
@@ -2754,6 +2810,21 @@ export default {
 	width: 1px;
 	height: 12px;
 	background-color: var(--border-color);
+}
+
+/* 非创建者只读共享状态标签样式 */
+.read-only-share-tag {
+	font-size: 11px;
+	font-weight: 600;
+	padding: 1px 6px;
+	border-radius: 4px;
+	color: var(--text-muted);
+	background-color: var(--border-color);
+}
+
+.read-only-share-tag.is-public {
+	color: var(--primary-blue);
+	background-color: var(--active-sidebar);
 }
 
 .editors-trigger {
