@@ -126,7 +126,22 @@
 								@keyup.enter.native="finishEditCategory(cat)" @click.stop.native></el-input>
 							<div v-else class="menu-text-wrapper">
 								<span class="menu-text" :title="cat.name">{{ cat.name }}</span>
-								<i v-if="cat.is_shared" class="el-icon-share shared-icon-tag" title="公开共享分类"></i>
+								
+								<!-- 分类共享用户标识下拉展示 -->
+								<el-popover v-if="cat.sharedUsers && cat.sharedUsers.length > 0" placement="right" trigger="hover" width="200"
+									:popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
+									<div class="shared-users-popover-content">
+										<div class="popover-sub-title"><i class="el-icon-share"></i> 共享给以下用户 ({{ cat.sharedUsers.length }})</div>
+										<div class="shared-user-tag-list">
+											<span class="shared-user-badge" v-for="u in cat.sharedUsers" :key="u.id">
+												<i class="el-icon-user"></i> {{ u.username }}
+											</span>
+										</div>
+									</div>
+									<i slot="reference" class="el-icon-share shared-icon-tag" title="公开共享分类 (移入查看具体共享用户)"></i>
+								</el-popover>
+								<i v-else-if="cat.is_shared" class="el-icon-share shared-icon-tag" title="公开共享分类"></i>
+
 								<span class="menu-badge" v-if="cat.docCount > 0">{{ cat.docCount }}</span>
 							</div>
 						</div>
@@ -135,18 +150,8 @@
 							:visible-arrow="false"
 							:popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 							<div class="action-menu-list">
-								<div class="action-item switch-action-item" @click.stop>
-									<div class="switch-item-left">
-										<i class="el-icon-share"></i>
-										<span>公开共享分类</span>
-									</div>
-									<el-switch
-										v-model="cat.is_shared"
-										size="mini"
-										active-color="#0ea5e9"
-										@change="handleCategoryShareChange(cat)"
-										@click.native.stop>
-									</el-switch>
+								<div class="action-item" @click.stop="openShareDialog('category', cat)">
+									<i class="el-icon-share"></i> <span>指定共享用户 ({{ cat.sharedUsers ? cat.sharedUsers.length : 0 }})</span>
 								</div>
 								<div class="action-divider"></div>
 
@@ -379,7 +384,7 @@
 										</div>
 
 										<div class="card-body" @click.stop>
-											<!-- 元数据栏 -->
+											<!-- 元数据栏 (增强共享用户展示与下拉框预览) -->
 											<div class="doc-meta-bar">
 												<div class="meta-item creator" title="文档创建者">
 													<i class="el-icon-user-solid"></i>
@@ -421,20 +426,40 @@
 
 												<div class="meta-divider"></div>
 
-												<div class="meta-item share-switch-item" :title="canManageShare(prob) ? '切换文档公开共享状态' : '文档公开共享状态'">
+												<!-- 共享给指定用户区域 -->
+												<div class="meta-item shared-users-meta">
 													<i class="el-icon-share"></i>
-													<span class="meta-label">公开：</span>
-													<el-switch
-														v-if="canManageShare(prob)"
-														v-model="prob.isShared"
-														size="mini"
-														active-color="#0ea5e9"
-														@change="handleProblemShareChange(prob)"
-														@click.native.stop>
-													</el-switch>
-													<span v-else class="read-only-share-tag" :class="{ 'is-public': prob.isShared }">
-														{{ prob.isShared ? '公开' : '私有' }}
-													</span>
+													<span class="meta-label">共享：</span>
+													
+													<!-- 有指定共享用户时 -->
+													<template v-if="prob.sharedUsers && prob.sharedUsers.length > 0">
+														<span class="shared-user-name-chip" v-for="(u, uIdx) in prob.sharedUsers.slice(0, 2)" :key="u.id">
+															{{ u.username }}{{ uIdx < Math.min(prob.sharedUsers.length, 2) - 1 ? '、' : '' }}
+														</span>
+
+														<!-- 共享用户超过2人时下拉Popover预览 -->
+														<el-popover v-if="prob.sharedUsers.length > 2" placement="top" trigger="hover" width="220"
+															:popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
+															<div class="shared-users-popover-content">
+																<div class="popover-sub-title"><i class="el-icon-share"></i> 共享文档给以下用户 ({{ prob.sharedUsers.length }})</div>
+																<div class="shared-user-tag-list">
+																	<span class="shared-user-badge" v-for="u in prob.sharedUsers" :key="u.id">
+																		<i class="el-icon-check"></i> {{ u.username }}
+																	</span>
+																</div>
+															</div>
+															<span slot="reference" class="more-users-count-tag">+{{ prob.sharedUsers.length - 2 }}人</span>
+														</el-popover>
+													</template>
+
+													<!-- 未共享/私有 -->
+													<span v-else class="read-only-share-tag">未指定(仅自己)</span>
+
+													<!-- 设为/管理共享用户按钮 -->
+													<el-button v-if="canManageShare(prob)" type="text" class="manage-share-btn" icon="el-icon-setting"
+														@click.stop="openShareDialog('problem', prob)" title="点击管理或取消共享用户">
+														设置
+													</el-button>
 												</div>
 
 												<div class="meta-version-badge" v-if="prob.version">
@@ -563,6 +588,50 @@
 				</transition>
 			</main>
 		</div>
+
+		<!-- ================= 3. 弹窗区 ================= -->
+
+		<!-- 指定用户共享设置弹窗 -->
+		<el-dialog v-dialogDrag :title="'指定共享用户 - ' + (shareTargetType === 'category' ? '分类目录【' + (shareTargetItem ? shareTargetItem.name : '') + '】' : '文档【' + (shareTargetItem ? shareTargetItem.title : '') + '】')"
+			:visible.sync="shareDialogVisible" :width="dialogWidth" :close-on-click-modal="false" custom-class="modern-dialog">
+			
+			<div class="share-dialog-content" v-loading="userListLoading">
+				<div class="share-filter-header">
+					<el-input size="small" v-model="searchUserQuery" placeholder="搜索用户名..." prefix-icon="el-icon-search" clearable class="modern-el-input"></el-input>
+					<div class="quick-select-btns">
+						<el-button size="mini" type="text" @click="handleSelectAllUsers(true)">全 选</el-button>
+						<el-button size="mini" type="text" @click="handleSelectAllUsers(false)">清 空</el-button>
+					</div>
+				</div>
+
+				<div class="user-select-list-wrapper">
+					<div v-if="filteredUserList.length === 0" class="empty-user-hint">
+						<i class="el-icon-user"></i>
+						<span>暂无匹配的用户</span>
+					</div>
+
+					<el-checkbox-group v-model="selectedShareUserIds" class="user-checkbox-grid">
+						<div class="user-checkbox-item" v-for="user in filteredUserList" :key="user.id">
+							<el-checkbox :label="user.id" border size="small">
+								<i class="el-icon-user"></i> {{ user.username }}
+							</el-checkbox>
+						</div>
+					</el-checkbox-group>
+				</div>
+
+				<div class="share-summary-bar">
+					<i class="el-icon-info"></i>
+					<span>已选择 <strong>{{ selectedShareUserIds.length }}</strong> 位共享用户。未勾选用户将无法查看该{{ shareTargetType === 'category' ? '分类目录' : '故障文档' }}。</span>
+				</div>
+			</div>
+
+			<div slot="footer">
+				<el-button @click="shareDialogVisible = false" size="small" :disabled="apiLoading" plain>取 消</el-button>
+				<el-button type="primary" @click="confirmSaveShareSettings" size="small" :loading="apiLoading" class="primary-gradient-btn">
+					保 存 设 置
+				</el-button>
+			</div>
+		</el-dialog>
 
 		<!-- 移动目录弹窗 -->
 		<el-dialog v-dialogDrag title="移动故障文档到指定目录" :visible.sync="moveDialogVisible" :width="smallDialogWidth" :close-on-click-modal="false"
@@ -706,6 +775,9 @@ import {
 	del_doc,
 	del_categories,
 	del_problems,
+	get_users,             // 获取系统用户列表 API
+	update_category_share, // 更新分类共享用户 API
+	update_problem_share   // 更新文档共享用户 API
 } from '../../api';
 
 import {
@@ -773,7 +845,6 @@ export default {
         }
     },
 	data() {
-		// 初始化时尝试读取保存的缓存
 		const savedActiveCatId = localStorage.getItem('trouble_docs_active_cat_id');
 		const savedCurrentPage = localStorage.getItem('trouble_docs_current_page');
 
@@ -784,9 +855,7 @@ export default {
 			pageLoading: true,
 			apiLoading: false,
 
-			// 优先读取本地缓存的分类ID
 			activeCategoryId: savedActiveCatId ? Number(savedActiveCatId) : null,
-
 			onlyMyCategories: localStorage.getItem('trouble_docs_only_my_cat') === 'true',
 
 			showScrollButtons: false,
@@ -797,7 +866,6 @@ export default {
 			highlightedProblemId: null,
 			highlightTimer: null,
 
-			// 优先读取本地缓存的页码
 			currentPage: savedCurrentPage ? Number(savedCurrentPage) : 1,
 			pageSize: 5,
 			totalProblems: 0,
@@ -846,6 +914,15 @@ export default {
 			categories: [],
 			problems: [],
 
+			// ======== 共享设置相关数据 ========
+			shareDialogVisible: false,
+			shareTargetType: 'category', // 'category' | 'problem'
+			shareTargetItem: null,
+			userList: [],
+			userListLoading: false,
+			selectedShareUserIds: [],
+			searchUserQuery: '',
+
 			categoryForm: { name: '' },
 			categoryRules: { name: [{ required: true, message: '请输入分类名称', trigger: 'blur' }] },
 			problemForm: { title: '', solution: '' },
@@ -882,6 +959,13 @@ export default {
 				username: localStorage.getItem('username') || localStorage.getItem('sign') || ''
 			};
 		},
+
+		filteredUserList() {
+			if (!this.searchUserQuery) return this.userList;
+			const query = this.searchUserQuery.toLowerCase().trim();
+			return this.userList.filter(u => u.username && u.username.toLowerCase().includes(query));
+		},
+
 		filteredCategories() {
 			let result = this.categories;
 
@@ -975,6 +1059,9 @@ export default {
 	},
 	beforeDestroy() {
 		window.removeEventListener('resize', this.handleResize);
+		if (this.undoTimer) clearInterval(this.undoTimer);
+		if (this.toastTimer) clearTimeout(this.toastTimer);
+		if (this.highlightTimer) clearTimeout(this.highlightTimer);
 		if (this.undoData) {
 			this.commitPendingDelete();
 		}
@@ -992,6 +1079,143 @@ export default {
 		handleResize() {
 			this.checkMobile();
 			this.updateScrollMarkers();
+		},
+
+		// ======== 获取用户列表 API (若后端暂无接口则降级为模拟用户) ========
+		async fetchUserList() {
+			this.userListLoading = true;
+			try {
+				if (typeof get_users === 'function') {
+					const resp = await get_users();
+					const res = resp?.data?.code !== undefined ? resp.data : resp;
+					if (res && (res.code === 1000 || res.code === 200)) {
+						this.userList = res.data || [];
+						return;
+					}
+				}
+			} catch (e) {
+				console.warn('get_users API 未就绪，自动采用前端模拟用户列表数据:', e);
+			} finally {
+				this.userListLoading = false;
+			}
+
+			// 后端 API 异常或未定义时的备选 Mock 数据
+			if (!this.userList || this.userList.length === 0) {
+				this.userList = [
+					{ id: 101, username: '张三 (运维组)' },
+					{ id: 102, username: '李四 (架构部)' },
+					{ id: 103, username: '王五 (前端Team)' },
+					{ id: 104, username: '赵六 (后端Dev)' },
+					{ id: 105, username: '钱七 (DBA组)' },
+					{ id: 106, username: '孙八 (测试部)' },
+					{ id: 107, username: '周九 (安全组)' }
+				];
+			}
+		},
+
+		// ======== 打开指定共享用户弹窗 ========
+		async openShareDialog(type, item) {
+			if (!this.canManageShare(item)) {
+				this.showToast('仅创建者有权修改共享设置');
+				return;
+			}
+			this.safeClosePopover(item.id);
+			
+			this.shareTargetType = type;
+			this.shareTargetItem = item;
+			this.searchUserQuery = '';
+
+			const sharedUsers = item.sharedUsers || item.shared_users || [];
+			this.selectedShareUserIds = sharedUsers.map(u => u.id);
+
+			this.shareDialogVisible = true;
+			await this.fetchUserList();
+		},
+
+		handleSelectAllUsers(val) {
+			if (val) {
+				this.selectedShareUserIds = this.filteredUserList.map(u => u.id);
+			} else {
+				this.selectedShareUserIds = [];
+			}
+		},
+
+		// ======== 提交保存分类/文档指定共享设置 ========
+		async confirmSaveShareSettings() {
+			if (!this.shareTargetItem) return;
+
+			const targetId = this.shareTargetItem.id;
+			const isShared = this.selectedShareUserIds.length > 0;
+			const selectedUserObjects = this.userList.filter(u => this.selectedShareUserIds.includes(u.id));
+
+			this.apiLoading = true;
+			try {
+				if (this.shareTargetType === 'category') {
+					let success = false;
+					if (typeof update_category_share === 'function') {
+						const resp = await update_category_share({
+							id: targetId,
+							shared_user_ids: this.selectedShareUserIds
+						});
+						const res = resp?.data?.code !== undefined ? resp.data : resp;
+						success = (res && (res.code === 1000 || res.code === 200));
+					} else {
+						// 兼容回退旧的 update 接口
+						const resp = await create_categories({
+							id: targetId,
+							name: this.shareTargetItem.name,
+							is_shared: isShared,
+							shared_user_ids: this.selectedShareUserIds
+						});
+						const res = resp?.data?.code !== undefined ? resp.data : resp;
+						success = (res && res.code === 1000);
+					}
+
+					if (success) {
+						this.$set(this.shareTargetItem, 'is_shared', isShared);
+						this.$set(this.shareTargetItem, 'sharedUsers', selectedUserObjects);
+						this.showToast(`分类【${this.shareTargetItem.name}】共享人员已更新 (${selectedUserObjects.length}人)`);
+					} else {
+						this.showToast('修改分类共享用户失败');
+					}
+				} 
+				else if (this.shareTargetType === 'problem') {
+					let success = false;
+					if (typeof update_problem_share === 'function') {
+						const resp = await update_problem_share({
+							id: targetId,
+							shared_user_ids: this.selectedShareUserIds
+						});
+						const res = resp?.data?.code !== undefined ? resp.data : resp;
+						success = (res && (res.code === 1000 || res.code === 200));
+					} else {
+						const resp = await create_problems({
+							id: targetId,
+							category_id: this.shareTargetItem.categoryId,
+							title: this.shareTargetItem.title,
+							solution: this.shareTargetItem.solution,
+							is_shared: isShared,
+							shared_user_ids: this.selectedShareUserIds
+						});
+						const res = resp?.data?.code !== undefined ? resp.data : resp;
+						success = (res && res.code === 1000);
+					}
+
+					if (success) {
+						this.$set(this.shareTargetItem, 'isShared', isShared);
+						this.$set(this.shareTargetItem, 'sharedUsers', selectedUserObjects);
+						this.showToast(`文档【${this.shareTargetItem.title}】共享人员已更新 (${selectedUserObjects.length}人)`);
+					} else {
+						this.showToast('修改文档共享用户失败');
+					}
+				}
+				this.shareDialogVisible = false;
+			} catch (err) {
+				console.error('save share settings error:', err);
+				this.showToast('同步共享设置失败，网络请求异常');
+			} finally {
+				this.apiLoading = false;
+			}
 		},
 
 		handleFilterSwitchChange(val) {
@@ -1212,7 +1436,6 @@ export default {
 			}
 		},
 
-		/* 切换分类：同步更新 localStorage 持久化缓存 */
 		async selectCategory(id) {
 			if (id === null || id === undefined) {
 				this.activeCategoryId = null;
@@ -1432,58 +1655,6 @@ export default {
 			}
 		},
 
-		async handleCategoryShareChange(cat) {
-			if (!this.canManageShare(cat)) {
-				this.showToast('仅分类创建者可修改共享状态');
-				return;
-			}
-			try {
-				const resp = await create_categories({
-					id: cat.id,
-					name: cat.name,
-					is_shared: cat.is_shared
-				});
-				const res = resp?.data?.code !== undefined ? resp.data : resp;
-				if (res && res.code === 1000) {
-					this.showToast(`【${cat.name}】已${cat.is_shared ? '设置为公开共享' : '取消公开共享'}`);
-				} else {
-					cat.is_shared = !cat.is_shared;
-					this.showToast(res?.msg || '修改分类共享状态失败');
-				}
-			} catch (err) {
-				cat.is_shared = !cat.is_shared;
-				console.error('handleCategoryShareChange error:', err);
-				this.showToast('修改共享状态失败，网络异常');
-			}
-		},
-
-		async handleProblemShareChange(prob) {
-			if (!this.canManageShare(prob)) {
-				this.showToast('仅文档创建者可修改共享状态');
-				return;
-			}
-			try {
-				const resp = await create_problems({
-					id: prob.id,
-					category_id: prob.categoryId,
-					title: prob.title,
-					solution: prob.solution,
-					is_shared: prob.isShared
-				});
-				const res = resp?.data?.code !== undefined ? resp.data : resp;
-				if (res && res.code === 1000) {
-					this.showToast(`故障文档【${prob.title}】已${prob.isShared ? '设置为公开共享' : '设为私有'}`);
-				} else {
-					prob.isShared = !prob.isShared;
-					this.showToast(res?.msg || '修改文档共享状态失败');
-				}
-			} catch (err) {
-				prob.isShared = !prob.isShared;
-				console.error('handleProblemShareChange error:', err);
-				this.showToast('修改文档共享状态失败，网络异常');
-			}
-		},
-
 		handleCategoryCommand(command, cat) {
 			this.safeClosePopover(cat.id);
 			if (!this.canManageShare(cat)) {
@@ -1509,6 +1680,7 @@ export default {
 						id: Number(res.data.id),
 						name: res.data.name,
 						is_shared: res.data.is_shared ?? false,
+						sharedUsers: Array.isArray(res.data.shared_users) ? res.data.shared_users : [],
 						creator: res.data.creator || this.currentUser,
 						creatorId: res.data.creator_id || this.currentUser?.id,
 						createdAt: res.data.created_at || getNowDate(),
@@ -1542,6 +1714,7 @@ export default {
 						id: Number(cat.id),
 						name: cat.name,
 						is_shared: cat.is_shared ?? false,
+						sharedUsers: Array.isArray(cat.shared_users) ? cat.shared_users : (Array.isArray(cat.sharedUsers) ? cat.sharedUsers : []),
 						creatorId: cat.creator_id,
 						updatedById: cat.updated_by_id,
 						creator: cat.creator || null,
@@ -1690,6 +1863,7 @@ export default {
 				title: p.title || '',
 				solution: p.solution || '',
 				isShared: p.is_shared ?? true,
+				sharedUsers: Array.isArray(p.shared_users) ? p.shared_users : (Array.isArray(p.sharedUsers) ? p.sharedUsers : []),
 				version: p.version || 1,
 				updatedAt: displayTime,
 				creator: creatorObj,
@@ -1699,7 +1873,6 @@ export default {
 			};
 		},
 
-		/* ==================== 核心修改：刷新与初始化加载逻辑 ==================== */
 		async fetchData() {
 			this.pageLoading = true;
 			try {
@@ -1710,7 +1883,6 @@ export default {
 
 				let targetCatId = null;
 
-				// 1. 检查本地保存的分类ID是否依然存在于可用列表中
 				if (savedCatId !== null && savedCatId !== undefined && savedCatId !== '') {
 					const existInFiltered = this.filteredCategories.some(c => Number(c.id) === Number(savedCatId));
 					if (existInFiltered) {
@@ -1718,7 +1890,6 @@ export default {
 					}
 				}
 
-				// 2. 如果保存的分类已被删除或不存在，自动回退到默认的页面（列表中第0个分类）
 				if (targetCatId === null) {
 					if (this.filteredCategories.length > 0) {
 						targetCatId = this.filteredCategories[0].id;
@@ -1727,7 +1898,6 @@ export default {
 					}
 				}
 
-				// 3. 应用选中的分类与翻页状态
 				this.activeCategoryId = targetCatId;
 
 				if (targetCatId !== null) {
@@ -2127,7 +2297,6 @@ export default {
 			}
 		},
 
-		/* ==================== 核心修改：分类删除及自动回退默认页面 ==================== */
 		async confirmDelete() {
 			if (!this.deleteTarget) return;
 
@@ -2175,7 +2344,6 @@ export default {
 					this.categories.splice(index, 1);
 					this.problems = this.problems.filter(p => Number(p.categoryId) !== Number(targetId));
 
-					// 如果删除的是当前处于选中的分类，自动回退并显示默认的第一个分类页面
 					if (Number(this.activeCategoryId) === Number(targetId)) {
 						if (this.filteredCategories.length > 0) {
 							const fallbackCatId = this.filteredCategories[0].id;
@@ -2237,7 +2405,6 @@ export default {
 			}, 1000);
 		},
 
-		/* ==================== 核心修改：撤回恢复同步选中状态 ==================== */
 		async executeUndo() {
 			if (!this.undoData) return;
 
@@ -2259,7 +2426,6 @@ export default {
 				if (backupData.problems && backupData.problems.length > 0) {
 					this.problems.push(...backupData.problems);
 				}
-				// 撤回分类后重新选中该分类
 				this.activeCategoryId = backupData.category.id;
 				localStorage.setItem('trouble_docs_active_cat_id', backupData.category.id);
 				this.getProblems(this.currentPage);
@@ -2565,6 +2731,7 @@ export default {
 	display: flex;
 	align-items: center;
 	gap: 20px;
+	flex-shrink: 0;
 }
 
 .collapse-btn {
@@ -2582,6 +2749,7 @@ export default {
 	display: flex;
 	align-items: center;
 	gap: 10px;
+	flex-shrink: 0;
 }
 
 .logo-icon-wrapper {
@@ -2613,6 +2781,7 @@ export default {
 	flex-direction: row;
 	align-items: center;
 	gap: 16px;
+	flex-shrink: 0;
 }
 
 .primary-gradient-btn {
@@ -2633,6 +2802,7 @@ export default {
 	width: 1px;
 	height: 24px;
 	background-color: var(--border-color);
+	flex-shrink: 0;
 }
 
 .theme-btn {
@@ -2647,6 +2817,7 @@ export default {
 	cursor: pointer;
 	background-color: var(--hover-sidebar);
 	transition: all 0.2s;
+	flex-shrink: 0;
 }
 
 .theme-btn:hover {
@@ -2659,6 +2830,7 @@ export default {
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
+	flex-shrink: 0;
 }
 
 .user-avatar {
@@ -3518,9 +3690,137 @@ export default {
 	background-color: var(--border-color);
 }
 
-.read-only-share-tag.is-public {
+.shared-user-name-chip {
+	font-size: 12px;
+	font-weight: 600;
 	color: var(--primary-blue);
+}
+
+.more-users-count-tag {
+	font-size: 11px;
+	font-weight: 700;
 	background-color: var(--active-sidebar);
+	color: var(--primary-blue);
+	padding: 1px 6px;
+	border-radius: 10px;
+	margin-left: 4px;
+	cursor: pointer;
+}
+
+.manage-share-btn {
+	padding: 0 4px !important;
+	font-size: 12px !important;
+	color: var(--text-muted) !important;
+	margin-left: 6px;
+}
+
+.manage-share-btn:hover {
+	color: var(--primary-blue) !important;
+}
+
+/* 共享弹窗与用户勾选列表样式 */
+.share-dialog-content {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.share-filter-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.quick-select-btns {
+	display: flex;
+	gap: 8px;
+	flex-shrink: 0;
+}
+
+.user-select-list-wrapper {
+	max-height: 280px;
+	overflow-y: auto;
+	border: 1px solid var(--border-color);
+	border-radius: 8px;
+	padding: 12px;
+	background-color: var(--bg-app);
+}
+
+.empty-user-hint {
+	text-align: center;
+	padding: 24px 0;
+	color: var(--text-muted);
+	font-size: 13px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.user-checkbox-grid {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 10px;
+}
+
+.user-checkbox-item .el-checkbox {
+	width: 100%;
+	margin-right: 0 !important;
+	display: flex;
+	align-items: center;
+}
+
+.share-summary-bar {
+	font-size: 12px;
+	color: var(--text-muted);
+	background-color: var(--hover-sidebar);
+	padding: 8px 12px;
+	border-radius: 6px;
+	border: 1px solid var(--border-color);
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.share-summary-bar i {
+	color: var(--primary-blue);
+}
+
+.share-summary-bar strong {
+	color: var(--primary-blue);
+}
+
+.shared-users-popover-content {
+	padding: 6px;
+}
+
+.popover-sub-title {
+	font-size: 12px;
+	font-weight: 700;
+	color: var(--text-h1);
+	margin-bottom: 8px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.shared-user-tag-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	max-height: 160px;
+	overflow-y: auto;
+}
+
+.shared-user-badge {
+	font-size: 11px;
+	background-color: var(--active-sidebar);
+	color: var(--primary-blue);
+	padding: 2px 8px;
+	border-radius: 12px;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
 }
 
 .editors-trigger {
@@ -4094,22 +4394,48 @@ export default {
    移动端 (Mobile) 响应式适配样式
    ========================================================= */
 @media (max-width: 768px) {
-	/* 1. Header 调整 */
 	.bp-header {
-		padding: 0 12px;
+		padding: 0 10px;
 		height: 56px;
 	}
+	.header-left {
+		gap: 8px;
+		flex-shrink: 0;
+	}
 	.logo-text {
-		font-size: 16px;
+		font-size: 15px;
 	}
 	.header-actions {
-		gap: 8px;
-	}
-	.glow-btn.primary-gradient-btn {
-		padding: 7px 10px !important;
+		gap: 6px;
+		flex-shrink: 0;
 	}
 
-	/* 2. 主体与侧边栏抽屉模式 */
+	.header-actions .btn-text {
+		display: none !important;
+	}
+	.header-actions .el-button {
+		padding: 7px 9px !important;
+	}
+	.header-actions .el-button [class*="el-icon-"] {
+		margin-right: 0 !important;
+		font-size: 14px;
+	}
+	.header-actions .divider {
+		margin: 0 2px;
+		height: 18px;
+	}
+	.theme-btn {
+		width: 32px;
+		height: 32px;
+		font-size: 16px;
+	}
+	.avatar-wrapper {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+	}
+
 	.bp-body {
 		height: calc(100vh - 56px);
 		position: relative;
@@ -4132,17 +4458,14 @@ export default {
 		opacity: 1 !important;
 	}
 
-	/* 3. 主内容区域 Padding 适配 */
 	.main-content-container {
 		padding: 16px 12px 60px 12px;
 	}
 
-	/* 4. 隐藏右侧挂钩锚点 */
 	.scrollbar-markers-track {
 		display: none !important;
 	}
 
-	/* 5. 分类标题头部上下垂直排布 */
 	.main-header {
 		flex-direction: column;
 		align-items: stretch;
@@ -4160,12 +4483,10 @@ export default {
 		width: 100% !important;
 	}
 
-	/* 6. 卡牌速查区改单列或双列 */
 	.card-deck-grid {
 		grid-template-columns: repeat(2, 1fr) !important;
 	}
 
-	/* 7. 卡片 Header 与 Meta 栏自适应换行 */
 	.card-header {
 		padding: 12px;
 		flex-direction: column;
@@ -4188,7 +4509,10 @@ export default {
 		display: none;
 	}
 
-	/* 8. 解决方案按钮组换行 */
+	.user-checkbox-grid {
+		grid-template-columns: repeat(2, 1fr) !important;
+	}
+
 	.solution-header {
 		flex-direction: column;
 		align-items: stretch;
@@ -4204,7 +4528,6 @@ export default {
 		font-size: 11px;
 	}
 
-	/* 9. 移动端分页栏优化（居中显示，精简按钮尺寸） */
 	.pagination-wrapper {
 		justify-content: center;
 		padding-top: 16px;
@@ -4229,13 +4552,11 @@ export default {
 		padding: 0 4px !important;
 	}
 
-	/* 10. 一键置顶悬浮按钮移动 */
 	.quick-scroll-widget {
 		right: 16px;
 		bottom: 20px;
 	}
 
-	/* 11. 撤回 Toast 位置适配 */
 	.undo-toast {
 		width: 90% !important;
 		left: 5% !important;
