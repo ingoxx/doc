@@ -2,8 +2,10 @@
 	<div class="bp-wrapper" :class="{ 'is-dark': isDark }" v-loading="pageLoading"
 		element-loading-background="rgba(0, 0, 0, 0.8)">
 
-		<!-- 全局隐藏的文件上传 Input -->
+		<!-- 全局隐藏的附件上传 Input -->
 		<input type="file" ref="hiddenFileInput" style="display: none" @change="handleFileUpload" />
+		<!-- 全局隐藏的文档导入 Input -->
+		<input type="file" ref="importFileInput" accept=".md,.txt,.log" style="display: none" @change="handleImportFileSelect" />
 
 		<!-- ================= 1. 毛玻璃 Header ================= -->
 		<header class="bp-header">
@@ -21,23 +23,42 @@
 			</div>
 
 			<div class="header-actions">
-				<el-button class="glow-btn primary-gradient-btn" size="small" icon="el-icon-plus"
-					@click="openProblemDialog">
-					录入新故障
-				</el-button>
+				<!-- 导入文档按钮 -->
+				<el-tooltip
+					:disabled="canAddProblemInCurrentCategory"
+					content="他人共享给您的分类目录暂不支持导入故障文档"
+					placement="bottom">
+					<span class="btn-tooltip-wrapper">
+						<el-button class="export-btn" size="small" icon="el-icon-upload2" plain
+							:disabled="!canAddProblemInCurrentCategory"
+							@click="triggerImportFile">
+							<span class="btn-text">导入文档</span>
+						</el-button>
+					</span>
+				</el-tooltip>
+
+				<!-- 录入文档按钮 -->
+				<el-tooltip
+					:disabled="canAddProblemInCurrentCategory"
+					content="他人共享给您的分类目录暂不支持录入新故障文档"
+					placement="bottom">
+					<span class="btn-tooltip-wrapper">
+						<el-button class="glow-btn primary-gradient-btn" size="small" icon="el-icon-plus"
+							:disabled="!canAddProblemInCurrentCategory"
+							@click="openProblemDialog">
+							<span class="btn-text">录入文档</span>
+						</el-button>
+					</span>
+				</el-tooltip>
+
 				<div class="divider"></div>
 				<div class="theme-btn" @click="toggleTheme" :title="isDark ? '切换到白天模式' : '切换到暗黑深邃模式'">
 					<i :class="isDark ? 'el-icon-sunny' : 'el-icon-moon'"></i>
 				</div>
 
-				<!-- 头像及下拉菜单 -->
 				<el-popover placement="bottom-end" width="160" trigger="click" :visible-arrow="false"
 					:popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 					<div class="action-menu-list">
-						<div class="action-item" @click="handleUserCommand('history')">
-							<i class="el-icon-time"></i> <span>历史记录</span>
-						</div>
-						<div class="action-divider"></div>
 						<div class="action-item danger" @click="handleUserCommand('logout')">
 							<i class="el-icon-switch-button"></i> <span>退出文档</span>
 						</div>
@@ -49,6 +70,9 @@
 				</el-popover>
 			</div>
 		</header>
+
+		<!-- 移动端侧边栏遮罩层 -->
+		<div v-if="isMobile && !sidebarCollapsed" class="mobile-sidebar-backdrop" @click="sidebarCollapsed = true"></div>
 
 		<!-- ================= 2. 主体区 (Flex 弹性并排) ================= -->
 		<div class="bp-body">
@@ -65,6 +89,24 @@
 						<el-input class="modern-el-input" v-model="searchCategoryQuery" placeholder="搜索分类目录..."
 							prefix-icon="el-icon-search" clearable></el-input>
 					</div>
+
+					<!-- 带有移入提示的过滤开关 -->
+					<el-tooltip
+						placement="right"
+						:content="onlyMyCategories ? '点击关闭：可查看别人共享给你的目录分类' : '点击开启：过滤他人共享，仅看自己创建的分类'"
+						:open-delay="200">
+						<div class="category-filter-toggle">
+							<span class="toggle-label" :class="{ 'is-active': onlyMyCategories }">
+								<i class="el-icon-user"></i> 只看我创建的
+							</span>
+							<el-switch
+								v-model="onlyMyCategories"
+								size="mini"
+								active-color="#0ea5e9"
+								@change="handleFilterSwitchChange">
+							</el-switch>
+						</div>
+					</el-tooltip>
 				</div>
 
 				<div class="menu-list" v-loading="apiLoading">
@@ -89,27 +131,24 @@
 							</div>
 						</div>
 
-						<el-popover :ref="'popover_' + cat.id" placement="right-start" width="200" trigger="click"
+						<el-popover v-if="canManageShare(cat)" :ref="'popover_' + cat.id" placement="right-start" width="200" trigger="click"
 							:visible-arrow="false"
 							:popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 							<div class="action-menu-list">
-								<!-- 仅当当前登录用户为分类创建者时，才展示公开共享开关 -->
-								<template v-if="canManageShare(cat)">
-									<div class="action-item switch-action-item" @click.stop>
-										<div class="switch-item-left">
-											<i class="el-icon-share"></i>
-											<span>公开共享分类</span>
-										</div>
-										<el-switch
-											v-model="cat.is_shared"
-											size="mini"
-											active-color="#0ea5e9"
-											@change="handleCategoryShareChange(cat)"
-											@click.native.stop>
-										</el-switch>
+								<div class="action-item switch-action-item" @click.stop>
+									<div class="switch-item-left">
+										<i class="el-icon-share"></i>
+										<span>公开共享分类</span>
 									</div>
-									<div class="action-divider"></div>
-								</template>
+									<el-switch
+										v-model="cat.is_shared"
+										size="mini"
+										active-color="#0ea5e9"
+										@change="handleCategoryShareChange(cat)"
+										@click.native.stop>
+									</el-switch>
+								</div>
+								<div class="action-divider"></div>
 
 								<div class="action-item" @click.stop="handleCategoryCommand('rename', cat)">
 									<i class="el-icon-edit"></i> <span>重命名分类</span>
@@ -129,11 +168,42 @@
 
 			<!-- 右侧阅读工作区 (Main) -->
 			<main class="bp-main" ref="mainScrollContainer" @scroll="handleScroll">
+				<!-- 右侧锚点轨道 (PC端展示) -->
+				<div class="scrollbar-markers-track" v-if="scrollMarkers.length > 0 && !isMobile">
+					<el-popover
+						v-for="marker in scrollMarkers"
+						:key="'marker-' + marker.id"
+						placement="left"
+						trigger="hover"
+						width="260"
+						:popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'"
+					>
+						<div class="marker-popover-content">
+							<div class="marker-popover-title">
+								<i class="el-icon-document"></i>
+								<span>{{ marker.title }}</span>
+							</div>
+							<p class="marker-popover-summary">{{ getPlainSummary(marker.solution) }}</p>
+							<div class="marker-popover-tip">
+								<i class="el-icon-position"></i> 点击直达本文档位置
+							</div>
+						</div>
+						<div
+							slot="reference"
+							class="scroll-marker-item"
+							:class="{ 'is-active': activeMarkerId === marker.id }"
+							:style="{ top: marker.topPercent + '%' }"
+							@click.stop="scrollToProblem(marker.id)"
+						>
+							<span class="marker-dot"></span>
+						</div>
+					</el-popover>
+				</div>
+
 				<div class="main-content-container">
 
 					<div class="main-header">
 						<div class="category-meta">
-							<!-- 当前目录分类创建者展示 -->
 							<div class="category-badge-group">
 								<span class="category-badge">当前目录</span>
 								<span v-if="currentCategory && currentCategory.creator" class="category-creator-badge" title="目录创建者">
@@ -152,8 +222,11 @@
 
 						<div class="main-header-actions">
 							<div class="search-box-wrapper main-search">
-								<el-input class="modern-el-input" v-model="searchProblemQuery"
-									placeholder="搜索故障 (支持标题/内容)" prefix-icon="el-icon-search" clearable></el-input>
+								<el-input class="modern-el-input" v-model="searchProblemInput"
+									placeholder="搜索文档 (按Enter或离焦搜索)" prefix-icon="el-icon-search" clearable
+									@keyup.enter.native="handleProblemSearch"
+									@blur="handleProblemSearch"
+									@clear="handleProblemSearch"></el-input>
 							</div>
 
 							<transition name="el-fade-in-linear">
@@ -193,7 +266,7 @@
 						<div v-if="isBatchMode" class="batch-mode-banner">
 							<div class="batch-banner-left">
 								<i class="el-icon-magic-stick"></i>
-								跨目录多选模式已开启。请在左侧勾选，目前已选中 <strong>{{ selectedProblemIds.length }}</strong> 篇文档。
+								跨目录多选模式已开启。已选中 <strong>{{ selectedProblemIds.length }}</strong> 篇。
 							</div>
 							<div class="batch-banner-right">
 								<el-button size="mini" plain @click="toggleBatchMode">取 消</el-button>
@@ -214,11 +287,11 @@
 									<div class="deck-title">
 										<i class="el-icon-s-grid"></i>
 										<span>目录故障卡牌速查</span>
-										<span class="deck-badge">{{ currentProblems.length }} 篇本页快查</span>
+										<span class="deck-badge">{{ currentProblems.length }} 篇快查</span>
 									</div>
 									<el-button type="text" class="deck-toggle-btn" @click="showCardOverview = !showCardOverview">
 										<i :class="showCardOverview ? 'el-icon-arrow-up' : 'el-icon-arrow-down'"></i>
-										{{ showCardOverview ? '收起卡牌' : '展开卡牌' }}
+										{{ showCardOverview ? '收起' : '展开' }}
 									</el-button>
 								</div>
 
@@ -251,7 +324,9 @@
 									<i class="el-icon-document-delete"></i>
 								</div>
 								<h3>{{ searchProblemQuery ? '未找到相关内容' : '此目录还是空的' }}</h3>
-								<p>{{ searchProblemQuery ? '请尝试更换搜索关键词或检查拼写' : '您可以点击右上角按钮录入第一条故障记录' }}</p>
+								<p v-if="searchProblemQuery">请尝试更换搜索关键词或检查拼写</p>
+								<p v-else-if="canAddProblemInCurrentCategory">您可以点击右上角按钮录入第一条故障记录</p>
+								<p v-else>当前目录为他人共享知识库，您暂无录入文档权限</p>
 							</div>
 
 							<!-- 5. 故障详细列表 -->
@@ -282,9 +357,11 @@
 													v-model="prob.title" size="small" class="inline-edit-input"
 													@blur="finishEditTitle(prob)" @keyup.enter.native="finishEditTitle(prob)"
 													@click.stop.native></el-input>
-												<div v-else class="editable-text-wrapper" @click.stop="startEditTitle(prob.id)">
+												
+												<div v-else class="editable-text-wrapper" :class="{ 'is-readonly': !canManageShare(prob) }"
+													@click.stop="canManageShare(prob) && startEditTitle(prob.id)">
 													<h3 class="editable-text">{{ prob.title }}</h3>
-													<i class="el-icon-edit edit-icon" title="点击编辑"></i>
+													<i v-if="canManageShare(prob)" class="el-icon-edit edit-icon" title="点击编辑标题"></i>
 												</div>
 											</div>
 
@@ -293,7 +370,8 @@
 												<div class="action-icons">
 													<el-button type="text" class="icon-btn" icon="el-icon-download"
 														@click.stop="exportSingleProblem(prob)" title="仅导出此文档"></el-button>
-													<el-button type="text" class="card-delete-btn icon-btn"
+													
+													<el-button v-if="canManageShare(prob)" type="text" class="card-delete-btn icon-btn"
 														icon="el-icon-delete" @click.stop="requestDeleteProblem(prob.id)"
 														title="删除记录"></el-button>
 												</div>
@@ -301,7 +379,7 @@
 										</div>
 
 										<div class="card-body" @click.stop>
-											<!-- 故障文档人员信息元数据栏 -->
+											<!-- 元数据栏 -->
 											<div class="doc-meta-bar">
 												<div class="meta-item creator" title="文档创建者">
 													<i class="el-icon-user-solid"></i>
@@ -319,7 +397,6 @@
 
 												<div class="meta-divider" v-if="prob.editors && prob.editors.length > 0"></div>
 
-												<!-- 参与编辑的人员列表Popover展示 -->
 												<div class="meta-item editors" v-if="prob.editors && prob.editors.length > 0">
 													<i class="el-icon-s-custom"></i>
 													<span class="meta-label">贡献者：</span>
@@ -344,7 +421,6 @@
 
 												<div class="meta-divider"></div>
 
-												<!-- 故障文档 is_shared 共享状态开关 (仅创建者展示 Switch 开关，非创建者仅展示只读标签) -->
 												<div class="meta-item share-switch-item" :title="canManageShare(prob) ? '切换文档公开共享状态' : '文档公开共享状态'">
 													<i class="el-icon-share"></i>
 													<span class="meta-label">公开：</span>
@@ -366,26 +442,46 @@
 												</div>
 											</div>
 
-											<!-- ======= 附件与排查思路头部 ======= -->
+											<!-- ======= 排查思路头部 ======= -->
 											<div class="solution-header">
 												<div class="solution-header-left">
 													<div class="solution-label">
 														<i class="el-icon-magic-stick"></i> 排查思路与解决方案
 														<span class="md-tag" v-if="isMarkdown(prob.solution)">
-															<i class="el-icon-document-checked"></i> MD 格式
+															<i class="el-icon-document-checked"></i> MD
 														</span>
 													</div>
 
-													<!-- 附件展示胶囊 -->
 													<transition name="el-fade-in-linear">
-														<div class="attachment-badge" v-if="prob.attachment"
-															@click.stop="downloadFile(prob.attachment)" title="点击下载附件">
-															<i class="el-icon-document"></i>
-															<span class="file-name">{{ prob.attachment.name }}</span>
-															<span class="remove-file-btn" @click.stop="removeAttachment(prob)"
-																title="移除该附件">
-																<i class="el-icon-close"></i>
-															</span>
+														<div class="attachment-group-container" v-if="prob.attachments && prob.attachments.length > 0" style="display: inline-flex; align-items: center; gap: 6px;">
+															<!-- 显示第 1 个附件名称 -->
+															<div class="attachment-badge" @click.stop="downloadFile(prob.attachments[0])" :title="'点击下载附件：' + prob.attachments[0].name">
+																<i class="el-icon-document"></i>
+																<span class="file-name">{{ prob.attachments[0].name }}</span>
+																<span v-if="canManageShare(prob)" class="remove-file-btn" @click.stop="removeAttachment(prob, prob.attachments[0], 0)"
+																	title="移除该附件">
+																	<i class="el-icon-close"></i>
+																</span>
+															</div>
+
+															<!-- 若超过1个附件，通过下拉菜单展开显示 -->
+															<el-dropdown v-if="prob.attachments.length > 1" trigger="click" @click.native.stop>
+																<div class="attachment-badge more-attachment-badge" title="查看更多附件">
+																	<span>+{{ prob.attachments.length - 1 }} 个附件</span>
+																	<i class="el-icon-arrow-down el-icon--right"></i>
+																</div>
+																<el-dropdown-menu slot="dropdown" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
+																	<el-dropdown-item v-for="(file, fIdx) in prob.attachments.slice(1)" :key="file.id || fIdx">
+																		<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 160px;" @click.stop="downloadFile(file)">
+																			<span style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px;" :title="file.name">
+																				<i class="el-icon-document"></i> {{ file.name }}
+																			</span>
+																			<i v-if="canManageShare(prob)" class="el-icon-close" style="color: #ef4444; cursor: pointer; font-size: 13px;"
+																				@click.stop="removeAttachment(prob, file, fIdx + 1)" title="移除此附件"></i>
+																		</div>
+																	</el-dropdown-item>
+																</el-dropdown-menu>
+															</el-dropdown>
 														</div>
 													</transition>
 												</div>
@@ -397,15 +493,16 @@
 													<div class="action-btn is-active-item" v-else @click.stop="finishEditSolution(prob)">
 														<i class="el-icon-check"></i> <span>保存修改</span>
 													</div>
-													<div class="copy-btn action-btn" v-if="!prob.attachment"
+
+													<div class="copy-btn action-btn" v-if="!prob.attachments || prob.attachments.length < 10"
 														@click.stop="triggerUpload(prob.id)">
-														<i class="el-icon-paperclip"></i> <span>添加附件</span>
+														<i class="el-icon-paperclip"></i> <span>添加附件 {{ (prob.attachments && prob.attachments.length > 0) ? `(${prob.attachments.length}/10)` : '' }}</span>
 													</div>
-													<div class="copy-btn action-btn" @click.stop="openMoveDialog(prob)">
+
+													<div class="copy-btn action-btn" @click.stop="openMoveDialog(prob)" v-if="canManageShare(prob)">
 														<i class="el-icon-folder-opened"></i> <span>移动分类</span>
 													</div>
 
-													<!-- 双模式复制下拉菜单 (复制原文 / 复制纯文本) -->
 													<el-dropdown trigger="click" @command="(cmd) => handleCopyCommand(cmd, prob.solution)" @click.native.stop>
 														<div class="copy-btn action-btn">
 															<i class="el-icon-document-copy"></i> <span>复制</span> <i class="el-icon-arrow-down el-icon--right"></i>
@@ -426,7 +523,6 @@
 												type="textarea" :autosize="{ minRows: 4, maxRows: 12 }" v-model="prob.solution"
 												class="inline-edit-textarea" @blur="finishEditSolution(prob)"></el-input>
 											
-											<!-- 卡片主体 Markdown 渲染展示 -->
 											<div v-else class="solution-code editable-block">
 												<div v-if="isMarkdown(prob.solution)" class="markdown-body" v-html="renderMarkdown(prob.solution)"></div>
 												<div v-else class="plain-code">{{ prob.solution }}</div>
@@ -437,15 +533,13 @@
 								</div>
 							</el-checkbox-group>
 
-							<!-- 6. 分页栏（total 实时绑定左侧选中分类的 docCount） -->
+							<!-- 6. 分页栏 -->
 							<div class="pagination-wrapper" v-if="computedTotalProblems > 0 || currentProblems.length > 0">
 								<el-pagination background 
-									@size-change="handleSizeChange" 
 									@current-change="handleCurrentChange"
 									:current-page="currentPage" 
-									:page-sizes="[5, 10, 20, 50]" 
 									:page-size="pageSize"
-									layout="total, sizes, prev, pager, next, jumper" 
+									:layout="isMobile ? 'prev, pager, next' : 'total, prev, pager, next, jumper'" 
 									:total="computedTotalProblems">
 								</el-pagination>
 							</div>
@@ -471,7 +565,7 @@
 		</div>
 
 		<!-- 移动目录弹窗 -->
-		<el-dialog v-dialogDrag title="移动故障文档到指定目录" :visible.sync="moveDialogVisible" width="450px" :close-on-click-modal="false"
+		<el-dialog v-dialogDrag title="移动故障文档到指定目录" :visible.sync="moveDialogVisible" :width="smallDialogWidth" :close-on-click-modal="false"
 			custom-class="modern-dialog">
 			<el-form size="small" label-position="top">
 				<el-form-item label="选择目标分类目录">
@@ -494,7 +588,7 @@
 		</el-dialog>
 
 		<!-- 删除确认窗 -->
-		<el-dialog v-dialogDrag title="操作确认" :visible.sync="deleteDialogVisible" width="400px" :close-on-click-modal="false"
+		<el-dialog v-dialogDrag title="操作确认" :visible.sync="deleteDialogVisible" :width="smallDialogWidth" :close-on-click-modal="false"
 			custom-class="modern-dialog">
 			<div class="dialog-danger-content">
 				<i class="el-icon-warning"></i>
@@ -511,9 +605,9 @@
 			<div class="undo-toast" v-if="undoData" :class="{ 'is-dark-toast': isDark }">
 				<div class="undo-toast-content">
 					<i class="el-icon-circle-check"></i>
-					<span>删除成功，<strong class="countdown-text">{{ undoCountdown }}</strong> 秒内可撤销。</span>
+					<span>已先移出视图，<strong class="countdown-text">{{ undoCountdown }}</strong> 秒内可撤销恢复。</span>
 				</div>
-				<el-button class="undo-btn" size="mini" @click="executeUndo" :loading="apiLoading">撤回恢复</el-button>
+				<el-button class="undo-btn" size="mini" @click="executeUndo">撤回恢复</el-button>
 			</div>
 		</transition>
 		<transition name="toast-slide-up">
@@ -524,7 +618,7 @@
 		</transition>
 
 		<!-- 新建分类窗 -->
-		<el-dialog v-dialogDrag title="新建分类" :visible.sync="categoryVisible" width="400px" :close-on-click-modal="false"
+		<el-dialog v-dialogDrag title="新建分类" :visible.sync="categoryVisible" :width="smallDialogWidth" :close-on-click-modal="false"
 			custom-class="modern-dialog">
 			<el-form :model="categoryForm" ref="categoryForm" :rules="categoryRules" size="small" label-position="top" @submit.native.prevent="submitCategory">
 				<el-form-item label="分类名称" prop="name">
@@ -539,7 +633,7 @@
 		</el-dialog>
 
 		<!-- 录入故障弹窗 -->
-		<el-dialog v-dialogDrag :title="'在【' + currentCategoryName + '】中录入'" :visible.sync="problemVisible" width="700px"
+		<el-dialog v-dialogDrag :title="'在【' + currentCategoryName + '】中录入'" :visible.sync="problemVisible" :width="dialogWidth"
 			:close-on-click-modal="false" custom-class="modern-dialog">
 			<el-form :model="problemForm" ref="problemForm" :rules="problemRules" size="small" label-position="top">
 				<el-form-item label="故障现象描述 / 标题" prop="title">
@@ -551,7 +645,6 @@
 						placeholder="可以粘贴 Bash 命令、日志、代码块、图片URL或 Markdown 文本..."></el-input>
 				</el-form-item>
 
-				<!-- 实时 Markdown 识别与预览 -->
 				<transition name="el-fade-in-linear">
 					<div v-if="isMarkdown(problemForm.solution)" class="dialog-md-preview-wrapper">
 						<div class="preview-title">
@@ -569,6 +662,35 @@
 			</div>
 		</el-dialog>
 
+		<!-- 导入文档核对与确认录入弹窗 -->
+		<el-dialog v-dialogDrag :title="'核对并导入文档到【' + currentCategoryName + '】'" :visible.sync="importDialogVisible" :width="dialogWidth"
+			:close-on-click-modal="false" custom-class="modern-dialog">
+			<el-form :model="importForm" ref="importForm" :rules="problemRules" size="small" label-position="top">
+				<el-form-item label="故障现象描述 / 标题" prop="title">
+					<el-input v-model="importForm.title" placeholder="请核对或修改导入文档标题"></el-input>
+				</el-form-item>
+				<el-form-item label="排查思路与详细内容 (已自动提取文档内容，可直接编辑修改)" prop="solution">
+					<el-input type="textarea" :autosize="{ minRows: 8, maxRows: 16 }" v-model="importForm.solution"
+						placeholder="文档排查思路与代码..."></el-input>
+				</el-form-item>
+
+				<transition name="el-fade-in-linear">
+					<div v-if="isMarkdown(importForm.solution)" class="dialog-md-preview-wrapper">
+						<div class="preview-title">
+							<i class="el-icon-view"></i> 实时 Markdown 渲染预览
+							<span class="md-tag"><i class="el-icon-document-checked"></i> 已识别 MD 格式</span>
+						</div>
+						<div class="markdown-body dialog-preview-body" v-html="renderMarkdown(importForm.solution)"></div>
+					</div>
+				</transition>
+			</el-form>
+			<div slot="footer">
+				<el-button @click="importDialogVisible = false" size="small" :disabled="apiLoading" plain>取 消</el-button>
+				<el-button type="primary" @click="confirmImportProblem" size="small" :loading="apiLoading"
+					class="primary-gradient-btn">确 认 录 入</el-button>
+			</div>
+		</el-dialog>
+
 	</div>
 </template>
 
@@ -582,6 +704,8 @@ import {
 	update_problems_categories,
 	upload_doc,
 	del_doc,
+	del_categories,
+	del_problems,
 } from '../../api';
 
 import {
@@ -649,12 +773,21 @@ export default {
         }
     },
 	data() {
+		// 初始化时尝试读取保存的缓存
+		const savedActiveCatId = localStorage.getItem('trouble_docs_active_cat_id');
+		const savedCurrentPage = localStorage.getItem('trouble_docs_current_page');
+
 		return {
 			isDark: true,
 			sidebarCollapsed: false,
+			isMobile: false,
 			pageLoading: true,
 			apiLoading: false,
-			activeCategoryId: null,
+
+			// 优先读取本地缓存的分类ID
+			activeCategoryId: savedActiveCatId ? Number(savedActiveCatId) : null,
+
+			onlyMyCategories: localStorage.getItem('trouble_docs_only_my_cat') === 'true',
 
 			showScrollButtons: false,
 			isContentVisible: true,
@@ -664,7 +797,8 @@ export default {
 			highlightedProblemId: null,
 			highlightTimer: null,
 
-			currentPage: 1,
+			// 优先读取本地缓存的页码
+			currentPage: savedCurrentPage ? Number(savedCurrentPage) : 1,
 			pageSize: 5,
 			totalProblems: 0,
 			totalCategories: 0,
@@ -680,8 +814,18 @@ export default {
 
 			categoryVisible: false,
 			problemVisible: false,
+
+			importDialogVisible: false,
+			importForm: { title: '', solution: '' },
+
 			searchCategoryQuery: '',
+			
+			searchProblemInput: '',
 			searchProblemQuery: '',
+			lastSearchedQuery: '', 
+
+			scrollMarkers: [],
+			activeMarkerId: null,
 
 			deleteDialogVisible: false,
 			deleteMessage: '',
@@ -712,7 +856,18 @@ export default {
 		}
 	},
 	computed: {
-		// ======== 获取当前系统登录用户信息 ========
+		dialogWidth() {
+			return this.isMobile ? '92%' : '700px';
+		},
+		smallDialogWidth() {
+			return this.isMobile ? '90%' : '400px';
+		},
+
+		canAddProblemInCurrentCategory() {
+			if (!this.currentCategory) return false;
+			return this.canManageShare(this.currentCategory);
+		},
+
 		currentUser() {
 			try {
 				const userStr = localStorage.getItem('userInfo') || localStorage.getItem('user');
@@ -729,10 +884,16 @@ export default {
 		},
 		filteredCategories() {
 			let result = this.categories;
+
+			if (this.onlyMyCategories) {
+				result = result.filter(c => this.canManageShare(c));
+			}
+
 			if (this.searchCategoryQuery) {
 				const query = this.searchCategoryQuery.toLowerCase();
 				result = result.filter(c => c.name.toLowerCase().includes(query));
 			}
+
 			return result.map(cat => {
 				const count = (cat.problems && Array.isArray(cat.problems))
 					? cat.problems.length
@@ -801,37 +962,207 @@ export default {
 		}
 	},
 	watch: {
-		searchProblemQuery() {
-			this.currentPage = 1;
+		paginatedProblems: {
+			handler() {
+				this.updateScrollMarkers();
+			},
+			immediate: true
+		}
+	},
+	mounted() {
+		this.checkMobile();
+		window.addEventListener('resize', this.handleResize);
+	},
+	beforeDestroy() {
+		window.removeEventListener('resize', this.handleResize);
+		if (this.undoData) {
+			this.commitPendingDelete();
 		}
 	},
 	async created() {
 		await this.fetchData();
 	},
 	methods: {
-		// ======== 核心方法：校验当前登录用户是否为该分类/文档的创建者 ========
+		checkMobile() {
+			this.isMobile = window.innerWidth <= 768;
+			if (this.isMobile) {
+				this.sidebarCollapsed = true;
+			}
+		},
+		handleResize() {
+			this.checkMobile();
+			this.updateScrollMarkers();
+		},
+
+		handleFilterSwitchChange(val) {
+			localStorage.setItem('trouble_docs_only_my_cat', val ? 'true' : 'false');
+			
+			this.$nextTick(() => {
+				if (this.filteredCategories.length > 0) {
+					const isCurrentExist = this.filteredCategories.some(c => Number(c.id) === Number(this.activeCategoryId));
+					if (!isCurrentExist) {
+						this.selectCategory(this.filteredCategories[0].id);
+					}
+				} else {
+					this.activeCategoryId = null;
+					localStorage.removeItem('trouble_docs_active_cat_id');
+				}
+			});
+		},
+
+		triggerImportFile() {
+			if (!this.canAddProblemInCurrentCategory) {
+				this.showToast('他人共享给您的分类目录暂不支持导入故障文档');
+				return;
+			}
+			this.$refs.importFileInput.click();
+		},
+
+		handleImportFileSelect(event) {
+			const file = event.target.files[0];
+			if (!file) return;
+
+			const reader = new FileReader();
+			reader.onload = (e) => {
+				const content = e.target.result || '';
+				let defaultTitle = file.name.replace(/\.[^/.]+$/, "");
+				let defaultSolution = content;
+
+				if (content.includes('TroubleDocs') || content.includes('排查思路与解决方案：')) {
+					const titleMatch = content.match(/##\s*\d+\.\s*\[.*?\]\s*(.+)/);
+					if (titleMatch && titleMatch[1]) {
+						defaultTitle = titleMatch[1].trim();
+					}
+
+					const solutionSplit = content.split(/\*\*排查思路与解决方案：\*\*/);
+					if (solutionSplit.length > 1) {
+						let rawSolution = solutionSplit[1];
+
+						const separatorIndex = rawSolution.search(/\n---\n|\n##\s/);
+						if (separatorIndex !== -1) {
+							rawSolution = rawSolution.substring(0, separatorIndex);
+						}
+
+						rawSolution = rawSolution.trim();
+
+						const codeBlockMatch = rawSolution.match(/^```[a-zA-Z]*\r?\n([\s\S]*?)\r?\n```$/);
+						if (codeBlockMatch && codeBlockMatch[1] !== undefined) {
+							defaultSolution = codeBlockMatch[1];
+						} else {
+							defaultSolution = rawSolution
+								.replace(/^```[a-zA-Z]*\r?\n?/, '')
+								.replace(/\r?\n?```$/, '')
+								.trim();
+						}
+					}
+				} else {
+					const lines = content.split('\n');
+					if (lines.length > 0 && lines[0].trim().startsWith('# ')) {
+						defaultTitle = lines[0].trim().replace(/^#\s+/, '');
+						defaultSolution = lines.slice(1).join('\n').trim();
+					}
+				}
+
+				this.importForm = {
+					title: defaultTitle,
+					solution: defaultSolution
+				};
+
+				this.importDialogVisible = true;
+				this.$nextTick(() => {
+					this.$refs.importForm && this.$refs.importForm.clearValidate();
+				});
+				event.target.value = '';
+			};
+
+			reader.onerror = () => {
+				this.showToast('文件读取失败，请检查文件格式是否为文本');
+				event.target.value = '';
+			};
+
+			reader.readAsText(file, 'UTF-8');
+		},
+
+		async confirmImportProblem() {
+			this.$refs.importForm.validate(async valid => {
+				if (valid) {
+					this.apiLoading = true;
+					try {
+						await this.createProblems({
+							categoryId: this.activeCategoryId,
+							title: this.importForm.title.trim(),
+							solution: this.importForm.solution.trim()
+						});
+						this.importDialogVisible = false;
+						this.showToast('导入文档已成功发布！');
+					} finally {
+						this.apiLoading = false;
+					}
+				}
+			});
+		},
+
+		handleProblemSearch() {
+			const query = (this.searchProblemInput || '').trim();
+			if (this.searchProblemQuery === query && this.lastSearchedQuery === query) return;
+			
+			this.searchProblemQuery = query;
+			this.lastSearchedQuery = query;
+			this.currentPage = 1;
+			localStorage.setItem('trouble_docs_current_page', '1');
+			this.getProblems(1);
+		},
+
+		updateScrollMarkers() {
+			if (this.isMobile) return;
+			this.$nextTick(() => {
+				const container = this.$refs.mainScrollContainer || this.$el.querySelector('.bp-main');
+				if (!container || !this.paginatedProblems || this.paginatedProblems.length === 0) {
+					this.scrollMarkers = [];
+					return;
+				}
+
+				const scrollHeight = container.scrollHeight;
+				if (scrollHeight <= 0) return;
+
+				const markers = [];
+				this.paginatedProblems.forEach(prob => {
+					const el = document.getElementById('problem-card-' + prob.id);
+					if (el) {
+						const topPos = el.offsetTop;
+						let percent = (topPos / scrollHeight) * 100;
+						percent = Math.min(Math.max(percent, 3), 97);
+
+						markers.push({
+							id: prob.id,
+							title: prob.title,
+							solution: prob.solution,
+							topPercent: percent.toFixed(2)
+						});
+					}
+				});
+				this.scrollMarkers = markers;
+			});
+		},
+
 		canManageShare(item) {
 			if (!item) return false;
 			const curUser = this.currentUser;
 			if (!curUser) return false;
 
-			// 提取分类或文档关联的创建者信息
 			const creator = item.creator || {};
 			const creatorId = item.creatorId || item.creator_id || creator.id;
 			const creatorUsername = creator.username || item.creatorName || '';
 
-			// 提取当前登录用户 ID 和 Username
 			const curUserId = curUser.id || curUser.userId || curUser.uid;
 			const curUsername = curUser.username || curUser.name || curUser.sign || '';
 
-			// 1. 优先校验 ID
 			if (curUserId !== undefined && curUserId !== null && creatorId !== undefined && creatorId !== null) {
 				if (Number(curUserId) === Number(creatorId)) {
 					return true;
 				}
 			}
 
-			// 2. 兜底校验用户名
 			if (curUsername && creatorUsername) {
 				if (String(curUsername).trim().toLowerCase() === String(creatorUsername).trim().toLowerCase()) {
 					return true;
@@ -844,6 +1175,21 @@ export default {
 		handleScroll(e) {
 			const scrollTop = e.target.scrollTop;
 			this.showScrollButtons = scrollTop > 150;
+
+			if (this.isMobile) return;
+
+			const containerRect = e.target.getBoundingClientRect();
+			let currentActiveId = null;
+			for (const prob of this.paginatedProblems) {
+				const el = document.getElementById('problem-card-' + prob.id);
+				if (el) {
+					const rect = el.getBoundingClientRect();
+					if (rect.top <= containerRect.top + 180 && rect.bottom >= containerRect.top) {
+						currentActiveId = prob.id;
+					}
+				}
+			}
+			this.activeMarkerId = currentActiveId;
 		},
 
 		scrollToTop() {
@@ -866,21 +1212,39 @@ export default {
 			}
 		},
 
+		/* 切换分类：同步更新 localStorage 持久化缓存 */
 		async selectCategory(id) {
+			if (id === null || id === undefined) {
+				this.activeCategoryId = null;
+				localStorage.removeItem('trouble_docs_active_cat_id');
+				this.problems = [];
+				return;
+			}
+
 			if (Number(this.activeCategoryId) === Number(id)) return;
 
 			this.isContentVisible = false;
 			await new Promise(resolve => setTimeout(resolve, 140));
 
 			this.activeCategoryId = Number(id);
+			localStorage.setItem('trouble_docs_active_cat_id', id);
+
+			this.searchProblemInput = '';
 			this.searchProblemQuery = '';
+			this.lastSearchedQuery = '';
 			this.currentPage = 1;
+			localStorage.setItem('trouble_docs_current_page', '1');
 			this.cardDealKey = Date.now();
+
+			if (this.isMobile) {
+				this.sidebarCollapsed = true;
+			}
 
 			await this.getProblems(1);
 
 			this.$nextTick(() => {
 				this.isContentVisible = true;
+				this.updateScrollMarkers();
 			});
 		},
 
@@ -902,6 +1266,7 @@ export default {
 					});
 
 					this.highlightedProblemId = id;
+					this.activeMarkerId = id;
 					if (this.highlightTimer) clearTimeout(this.highlightTimer);
 					this.highlightTimer = setTimeout(() => {
 						this.highlightedProblemId = null;
@@ -969,8 +1334,14 @@ export default {
 
 		async finishEditTitle(prob) {
 			if (this.editTitleId !== prob.id) return;
-			this.editTitleId = null;
+			
+			if (!this.canManageShare(prob)) {
+				this.showToast('仅文档创建者支持修改标题');
+				this.editTitleId = null;
+				return;
+			}
 
+			this.editTitleId = null;
 			this.apiLoading = true;
 			try {
 				const resp = await create_problems({
@@ -984,6 +1355,7 @@ export default {
 				if (res && res.code === 1000) {
 					prob.updatedAt = getNowDate();
 					this.showToast('故障标题已同步更新');
+					this.updateScrollMarkers();
 				} else {
 					this.showToast(res?.msg || '标题更新失败');
 				}
@@ -997,8 +1369,8 @@ export default {
 
 		async finishEditSolution(prob) {
 			if (this.editSolutionId !== prob.id) return;
-			this.editSolutionId = null;
 
+			this.editSolutionId = null;
 			this.apiLoading = true;
 			try {
 				const resp = await create_problems({
@@ -1012,6 +1384,7 @@ export default {
 				if (res && res.code === 1000) {
 					prob.updatedAt = getNowDate();
 					this.showToast('故障内容已同步更新');
+					this.updateScrollMarkers();
 				} else {
 					this.showToast(res?.msg || '内容更新失败');
 				}
@@ -1025,6 +1398,13 @@ export default {
 
 		async finishEditCategory(cat) {
 			if (this.editCategoryId !== cat.id) return;
+
+			if (!this.canManageShare(cat)) {
+				this.showToast('仅分类创建者支持重命名分类');
+				this.editCategoryId = null;
+				return;
+			}
+
 			const targetId = cat.id;
 			const newName = this.editCategoryName.trim() || '未命名分类';
 			this.editCategoryId = null;
@@ -1053,6 +1433,10 @@ export default {
 		},
 
 		async handleCategoryShareChange(cat) {
+			if (!this.canManageShare(cat)) {
+				this.showToast('仅分类创建者可修改共享状态');
+				return;
+			}
 			try {
 				const resp = await create_categories({
 					id: cat.id,
@@ -1074,6 +1458,10 @@ export default {
 		},
 
 		async handleProblemShareChange(prob) {
+			if (!this.canManageShare(prob)) {
+				this.showToast('仅文档创建者可修改共享状态');
+				return;
+			}
 			try {
 				const resp = await create_problems({
 					id: prob.id,
@@ -1098,6 +1486,10 @@ export default {
 
 		handleCategoryCommand(command, cat) {
 			this.safeClosePopover(cat.id);
+			if (!this.canManageShare(cat)) {
+				this.showToast('仅分类创建者可进行此操作');
+				return;
+			}
 			if (command === 'rename') {
 				this.editCategoryId = cat.id;
 				this.editCategoryName = cat.name;
@@ -1117,13 +1509,13 @@ export default {
 						id: Number(res.data.id),
 						name: res.data.name,
 						is_shared: res.data.is_shared ?? false,
-						creator: res.data.creator || null,
+						creator: res.data.creator || this.currentUser,
+						creatorId: res.data.creator_id || this.currentUser?.id,
 						createdAt: res.data.created_at || getNowDate(),
 						problems: []
 					};
 					this.categories.push(newCat);
-					this.activeCategoryId = newCat.id;
-					this.cardDealKey = Date.now();
+					this.selectCategory(newCat.id);
 					this.showToast('知识库目录创建成功');
 					return newCat;
 				} else {
@@ -1184,8 +1576,10 @@ export default {
 			try {
 				const params = {
 					page: page,
-					page_size: this.pageSize
+					page_size: this.pageSize,
+					keyword: this.searchProblemQuery.trim() || '',
 				};
+
 				if (this.activeCategoryId) {
 					params.category_id = Number(this.activeCategoryId);
 				}
@@ -1195,7 +1589,6 @@ export default {
 
 				if (res && (res.code === 1000 || res.code === 200)) {
 					const dataObj = res.data || {};
-					console.log("dataObj >>> ", dataObj);
 						
 					if (typeof dataObj.total === 'number') {
 						this.totalProblems = dataObj.total;
@@ -1205,6 +1598,7 @@ export default {
 
 					const list = Array.isArray(dataObj.list) ? dataObj.list : (Array.isArray(dataObj) ? dataObj : []);
 					this.problems = list.map(p => this.formatProblem(p));
+					this.updateScrollMarkers();
 					return list;
 				}
 			} catch (err) {
@@ -1235,8 +1629,10 @@ export default {
 					}
 
 					this.currentPage = 1;
+					localStorage.setItem('trouble_docs_current_page', '1');
 					this.cardDealKey = Date.now();
 					this.showToast('新故障记录发布成功');
+					this.updateScrollMarkers();
 					return newProb;
 				} else {
 					this.showToast(res?.msg || '新建故障记录失败');
@@ -1272,15 +1668,16 @@ export default {
 				}
 			}
 
-			let attachmentObj = null;
+			let attachmentsList = [];
 			if (Array.isArray(p.file_url) && p.file_url.length > 0) {
-				const firstFile = p.file_url[0];
-				attachmentObj = {
-					id: firstFile.id,
-					name: firstFile.name,
-					url: firstFile.url,
-					uploader: firstFile.uploader || null
-				};
+				attachmentsList = p.file_url.map(f => ({
+					id: f.id,
+					name: f.name || '附件文件',
+					url: f.url,
+					uploader: f.uploader || null
+				}));
+			} else if (p.attachment) {
+				attachmentsList = [p.attachment];
 			}
 
 			const catId = p.category_id || p.categoryId || (p.category ? p.category.id : null);
@@ -1298,19 +1695,47 @@ export default {
 				creator: creatorObj,
 				updatedBy: updatedByObj,
 				editors: editorsList,
-				attachment: attachmentObj
+				attachments: attachmentsList
 			};
 		},
 
+		/* ==================== 核心修改：刷新与初始化加载逻辑 ==================== */
 		async fetchData() {
 			this.pageLoading = true;
 			try {
 				await this.getCategories(1);
-				if (!this.activeCategoryId && this.categories.length > 0) {
-					this.activeCategoryId = this.categories[0].id;
+				
+				const savedCatId = localStorage.getItem('trouble_docs_active_cat_id');
+				const savedPage = Number(localStorage.getItem('trouble_docs_current_page')) || 1;
+
+				let targetCatId = null;
+
+				// 1. 检查本地保存的分类ID是否依然存在于可用列表中
+				if (savedCatId !== null && savedCatId !== undefined && savedCatId !== '') {
+					const existInFiltered = this.filteredCategories.some(c => Number(c.id) === Number(savedCatId));
+					if (existInFiltered) {
+						targetCatId = Number(savedCatId);
+					}
 				}
-				if (this.activeCategoryId) {
-					await this.getProblems(1);
+
+				// 2. 如果保存的分类已被删除或不存在，自动回退到默认的页面（列表中第0个分类）
+				if (targetCatId === null) {
+					if (this.filteredCategories.length > 0) {
+						targetCatId = this.filteredCategories[0].id;
+					} else if (this.categories.length > 0) {
+						targetCatId = this.categories[0].id;
+					}
+				}
+
+				// 3. 应用选中的分类与翻页状态
+				this.activeCategoryId = targetCatId;
+
+				if (targetCatId !== null) {
+					localStorage.setItem('trouble_docs_active_cat_id', targetCatId);
+					this.currentPage = savedPage;
+					await this.getProblems(savedPage);
+				} else {
+					localStorage.removeItem('trouble_docs_active_cat_id');
 				}
 			} catch (err) {
 				console.error('fetchData error:', err);
@@ -1322,15 +1747,22 @@ export default {
 		async handleSizeChange(val) {
 			this.pageSize = val;
 			this.currentPage = 1;
+			localStorage.setItem('trouble_docs_current_page', '1');
 			await this.getProblems(1);
 		},
 
 		async handleCurrentChange(val) {
 			this.currentPage = val;
+			localStorage.setItem('trouble_docs_current_page', String(val));
 			await this.getProblems(val);
 		},
 
 		triggerUpload(probId) {
+			const prob = this.problems.find(p => p.id === probId);
+			if (prob && prob.attachments && prob.attachments.length >= 10) {
+				this.showToast('单个文档最多只能上传 10 个附件');
+				return;
+			}
 			this.uploadTargetProbId = probId;
 			this.$refs.hiddenFileInput.click();
 		},
@@ -1338,6 +1770,14 @@ export default {
 		async handleFileUpload(event) {
 			const file = event.target.files[0];
 			if (!file || !this.uploadTargetProbId) return;
+
+			const prob = this.problems.find(p => p.id === this.uploadTargetProbId);
+			if (prob && prob.attachments && prob.attachments.length >= 10) {
+				this.showToast('单个文档最多只能上传 10 个附件');
+				event.target.value = '';
+				this.uploadTargetProbId = null;
+				return;
+			}
 
 			const formData = new FormData();
 			formData.append('file', file);
@@ -1351,16 +1791,18 @@ export default {
 				if (res && (res.code === 1000 || res.url)) {
 					const fileData = (res.data && res.data.url) ? res.data : res;
 
-					const prob = this.problems.find(p => p.id === this.uploadTargetProbId);
 					if (prob) {
-						this.$set(prob, 'attachment', {
+						if (!prob.attachments) {
+							this.$set(prob, 'attachments', []);
+						}
+						prob.attachments.push({
 							id: fileData.id,
 							name: fileData.name || file.name,
 							url: fileData.url,
 							uploader: fileData.uploader || null
 						});
 					}
-					this.showToast(`附件 ${fileData.name || file.name} 上传成功！`);
+					this.showToast(`附件【${fileData.name || file.name}】上传成功！`);
 				} else {
 					this.showToast(res?.msg || '附件上传失败');
 				}
@@ -1388,16 +1830,25 @@ export default {
 			this.showToast('附件开始下载...');
 		},
 
-		async removeAttachment(prob) {
-			if (!prob || !prob.id) return;
+		async removeAttachment(prob, attachment, index) {
+			if (!prob || !attachment) return;
+			if (!this.canManageShare(prob)) {
+				this.showToast('仅文档创建者可移除附件');
+				return;
+			}
 			this.apiLoading = true;
 			try {
-				const resp = await del_doc({ id: prob.id });
+				const resp = await del_doc({ id: prob.id, file_id: attachment.id });
 				const res = resp?.data?.code !== undefined ? resp.data : resp;
 
 				if (res && res.code === 1000) {
-					this.$set(prob, 'attachment', null);
-					this.showToast('附件已移除成功');
+					if (typeof index === 'number' && prob.attachments) {
+						prob.attachments.splice(index, 1);
+					} else if (prob.attachments) {
+						const targetIdx = prob.attachments.findIndex(item => item.id === attachment.id);
+						if (targetIdx !== -1) prob.attachments.splice(targetIdx, 1);
+					}
+					this.showToast('附件已成功移除');
 				} else {
 					this.showToast(res?.msg || '移除附件失败');
 				}
@@ -1491,6 +1942,10 @@ export default {
 		},
 
 		openMoveDialog(prob) {
+			if (!this.canManageShare(prob)) {
+				this.showToast('仅文档创建者支持移动分类');
+				return;
+			}
 			this.moveTargetProblem = prob;
 			this.moveToCategoryId = prob.categoryId;
 			this.moveDialogVisible = true;
@@ -1499,6 +1954,10 @@ export default {
 		async confirmMoveProblem() {
 			if (!this.moveToCategoryId || !this.moveTargetProblem) {
 				this.showToast('请选择迁移的目标目录');
+				return;
+			}
+			if (!this.canManageShare(this.moveTargetProblem)) {
+				this.showToast('仅文档创建者支持移动分类');
 				return;
 			}
 			this.apiLoading = true;
@@ -1533,6 +1992,7 @@ export default {
 
 					this.moveDialogVisible = false;
 					this.showToast('文档已成功转移到指定新目录');
+					this.updateScrollMarkers();
 				} else {
 					this.showToast(res?.msg || '转移目录失败');
 				}
@@ -1547,20 +2007,23 @@ export default {
 		convertMarkdownToPlainText(text) {
 			if (!text) return '';
 			let clean = text
-				.replace(/```[\s\S]*?```/g, (match) => {
-					return match.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '');
-				})
+				.replace(/```[a-zA-Z]*\n?([\s\S]*?)\n?```/g, '$1')
 				.replace(/`([^`]+)`/g, '$1')
 				.replace(/!\[(.*?)\]\(.*?\)/g, '$1')
 				.replace(/\[(.*?)\]\(.*?\)/g, '$1')
-				.replace(/^#{1,6}\s+/gm, '')
-				.replace(/^\s*>\s+/gm, '')
+				.replace(/^#{1,6}\s+(.*)$/gm, '\n$1\n')
+				.replace(/^\s*>\s?/gm, '')
 				.replace(/(\*\*|__)(.*?)\1/g, '$2')
 				.replace(/(\*|_)(.*?)\1/g, '$2')
 				.replace(/~~(.*?)~~/g, '$1')
-				.replace(/^\s*[-*+]\s+/gm, '')
-				.replace(/^\s*\d+\.\s+/gm, '')
-				.replace(/^\s*[-*_]{3,}\s*$/gm, '')
+				.replace(/^\s*[-*+]\s+/gm, '• ')
+				.replace(/\n(?=\s*\d+\.\s+)/g, '\n\n')
+				.replace(/\n(?=\s*•\s+)/g, '\n\n')
+				.replace(/^\|?[\s:-]+(?:\|[\s:-]+)+\|?$/gm, '')
+				.replace(/^\||\|$/gm, '')
+				.replace(/^\s*[-*_]{3,}\s*$/gm, '\n----------------------------------------\n')
+				.replace(/[ \t]+$/gm, '')
+				.replace(/\n{3,}/g, '\n\n')
 				.trim();
 			return clean;
 		},
@@ -1611,102 +2074,214 @@ export default {
 
 		requestDeleteCategory(cat) {
 			this.safeClosePopover(cat.id);
+			if (!this.canManageShare(cat)) {
+				this.showToast('仅分类创建者支持删除该分类');
+				return;
+			}
 			this.deleteTarget = { type: 'category', id: cat.id };
 			this.deleteMessage = `确定删除【${cat.name}】目录及其关联的所有排错记录吗？`;
 			this.deleteDialogVisible = true;
 		},
+
 		requestDeleteProblem(id) {
+			const prob = this.problems.find(p => p.id === id);
+			if (prob && !this.canManageShare(prob)) {
+				this.showToast('仅文档创建者支持删除该故障记录');
+				return;
+			}
 			this.deleteTarget = { type: 'problem', id: id };
 			this.deleteMessage = `确定要永久删除这条故障记录吗？`;
 			this.deleteDialogVisible = true;
 		},
 
+		async commitPendingDelete() {
+			if (!this.undoData) return;
+
+			if (this.undoTimer) {
+				clearInterval(this.undoTimer);
+				this.undoTimer = null;
+			}
+
+			const pending = this.undoData;
+			this.undoData = null;
+
+			try {
+				if (pending.type === 'category') {
+					const resp = await del_categories({ id: Number(pending.id) });
+					const res = resp?.data?.code !== undefined ? resp.data : resp;
+					if (!(res && (res.code === 1000 || res.code === 200))) {
+						console.error('分类真正删除失败:', res?.msg);
+						this.showToast(res?.msg || '后台真正删除分类失败');
+					}
+				} else if (pending.type === 'problem') {
+					const resp = await del_problems({ id: Number(pending.id) });
+					const res = resp?.data?.code !== undefined ? resp.data : resp;
+					if (!(res && (res.code === 1000 || res.code === 200))) {
+						console.error('文档真正删除失败:', res?.msg);
+						this.showToast(res?.msg || '后台真正删除文档失败');
+					}
+				}
+			} catch (err) {
+				console.error('commitPendingDelete error:', err);
+				this.showToast('后台真正提交删除时发生网络异常');
+			}
+		},
+
+		/* ==================== 核心修改：分类删除及自动回退默认页面 ==================== */
 		async confirmDelete() {
 			if (!this.deleteTarget) return;
+
+			if (this.undoData) {
+				await this.commitPendingDelete();
+			}
+
 			const targetType = this.deleteTarget.type;
 			const targetId = this.deleteTarget.id;
+
+			if (targetType === 'category') {
+				const cat = this.categories.find(c => Number(c.id) === Number(targetId));
+				if (cat && !this.canManageShare(cat)) {
+					this.showToast('仅分类创建者支持删除该分类');
+					this.deleteDialogVisible = false;
+					this.deleteTarget = null;
+					return;
+				}
+			} else if (targetType === 'problem') {
+				const prob = this.problems.find(p => p.id === targetId);
+				if (prob && !this.canManageShare(prob)) {
+					this.showToast('仅文档创建者支持删除该记录');
+					this.deleteDialogVisible = false;
+					this.deleteTarget = null;
+					return;
+				}
+			}
+
 			let backupData = null;
 
-			this.apiLoading = true;
-			try {
-				if (targetType === 'category') {
-					const index = this.categories.findIndex(c => Number(c.id) === Number(targetId));
-					if (index !== -1) {
-						backupData = {
-							type: 'category', catIndex: index,
-							category: { ...this.categories[index] },
-							problems: this.problems.filter(p => Number(p.categoryId) === Number(targetId))
-						};
-						this.categories.splice(index, 1);
-						this.problems = this.problems.filter(p => Number(p.categoryId) !== Number(targetId));
-						if (Number(this.activeCategoryId) === Number(targetId)) {
-							this.activeCategoryId = this.categories.length > 0 ? this.categories[0].id : null;
+			if (targetType === 'category') {
+				const index = this.categories.findIndex(c => Number(c.id) === Number(targetId));
+				if (index !== -1) {
+					const targetCat = this.categories[index];
+					const relatedProbs = this.problems.filter(p => Number(p.categoryId) === Number(targetId));
+
+					backupData = {
+						type: 'category',
+						id: targetId,
+						catIndex: index,
+						category: { ...targetCat },
+						problems: relatedProbs
+					};
+
+					this.categories.splice(index, 1);
+					this.problems = this.problems.filter(p => Number(p.categoryId) !== Number(targetId));
+
+					// 如果删除的是当前处于选中的分类，自动回退并显示默认的第一个分类页面
+					if (Number(this.activeCategoryId) === Number(targetId)) {
+						if (this.filteredCategories.length > 0) {
+							const fallbackCatId = this.filteredCategories[0].id;
+							this.activeCategoryId = fallbackCatId;
+							localStorage.setItem('trouble_docs_active_cat_id', fallbackCatId);
+							this.currentPage = 1;
+							localStorage.setItem('trouble_docs_current_page', '1');
+							this.getProblems(1);
+						} else {
+							this.activeCategoryId = null;
+							localStorage.removeItem('trouble_docs_active_cat_id');
 						}
 					}
 				}
-				else if (targetType === 'problem') {
-					const index = this.problems.findIndex(p => p.id === targetId);
-					if (index !== -1) {
-						const deletedProb = this.problems[index];
-						backupData = {
-							type: 'problem', probIndex: index, problem: { ...deletedProb }
-						};
-						this.problems.splice(index, 1);
+			} else if (targetType === 'problem') {
+				const index = this.problems.findIndex(p => p.id === targetId);
+				if (index !== -1) {
+					const deletedProb = this.problems[index];
 
-						const cat = this.categories.find(c => Number(c.id) === Number(deletedProb.categoryId));
-						if (cat && Array.isArray(cat.problems)) {
-							cat.problems = cat.problems.filter(p => p.id !== targetId);
-						}
+					backupData = {
+						type: 'problem',
+						id: targetId,
+						probIndex: index,
+						problem: { ...deletedProb }
+					};
 
-						this.selectedProblemIds = this.selectedProblemIds.filter(sid => sid !== targetId);
+					this.problems.splice(index, 1);
+
+					const cat = this.categories.find(c => Number(c.id) === Number(deletedProb.categoryId));
+					if (cat && Array.isArray(cat.problems)) {
+						cat.problems = cat.problems.filter(p => p.id !== targetId);
 					}
+
+					this.selectedProblemIds = this.selectedProblemIds.filter(sid => sid !== targetId);
 				}
-			} finally {
-				this.apiLoading = false;
-				this.deleteDialogVisible = false;
-				this.deleteTarget = null;
-				if (backupData) this.triggerUndoToast(backupData);
 			}
+
+			this.deleteDialogVisible = false;
+			this.deleteTarget = null;
+
+			if (backupData) {
+				this.triggerUndoToast(backupData);
+			}
+			this.updateScrollMarkers();
 		},
 
 		triggerUndoToast(backupData) {
 			if (this.undoTimer) clearInterval(this.undoTimer);
 			this.undoData = backupData;
 			this.undoCountdown = 20;
-			this.undoTimer = setInterval(() => {
+
+			this.undoTimer = setInterval(async () => {
 				this.undoCountdown--;
 				if (this.undoCountdown <= 0) {
 					clearInterval(this.undoTimer);
 					this.undoTimer = null;
-					this.undoData = null;
+					await this.commitPendingDelete();
 				}
 			}, 1000);
 		},
 
+		/* ==================== 核心修改：撤回恢复同步选中状态 ==================== */
 		async executeUndo() {
 			if (!this.undoData) return;
-			const backupData = this.undoData;
-			this.apiLoading = true;
-			try {
-				this.undoData = null;
-				if (this.undoTimer) { clearInterval(this.undoTimer); this.undoTimer = null; }
 
-				if (backupData.type === 'category') {
-					this.categories.splice(backupData.catIndex, 0, backupData.category);
-					this.problems.push(...backupData.problems);
-					this.activeCategoryId = backupData.category.id;
-				}
-				else if (backupData.type === 'problem') {
-					this.problems.splice(backupData.probIndex, 0, backupData.problem);
-					const cat = this.categories.find(c => Number(c.id) === Number(backupData.problem.categoryId));
-					if (cat && Array.isArray(cat.problems)) {
-						cat.problems.unshift(backupData.problem);
-					}
-					this.activeCategoryId = backupData.problem.categoryId;
-				}
-			} finally {
-				this.apiLoading = false;
+			if (this.undoTimer) {
+				clearInterval(this.undoTimer);
+				this.undoTimer = null;
 			}
+
+			const backupData = this.undoData;
+			this.undoData = null;
+
+			if (backupData.type === 'category') {
+				if (backupData.catIndex !== undefined && backupData.catIndex <= this.categories.length) {
+					this.categories.splice(backupData.catIndex, 0, backupData.category);
+				} else {
+					this.categories.push(backupData.category);
+				}
+
+				if (backupData.problems && backupData.problems.length > 0) {
+					this.problems.push(...backupData.problems);
+				}
+				// 撤回分类后重新选中该分类
+				this.activeCategoryId = backupData.category.id;
+				localStorage.setItem('trouble_docs_active_cat_id', backupData.category.id);
+				this.getProblems(this.currentPage);
+				this.showToast(`已成功撤回并恢复【${backupData.category.name}】分类`);
+			}
+			else if (backupData.type === 'problem') {
+				if (backupData.probIndex !== undefined && backupData.probIndex <= this.problems.length) {
+					this.problems.splice(backupData.probIndex, 0, backupData.problem);
+				} else {
+					this.problems.unshift(backupData.problem);
+				}
+
+				const cat = this.categories.find(c => Number(c.id) === Number(backupData.problem.categoryId));
+				if (cat && Array.isArray(cat.problems)) {
+					cat.problems.unshift(backupData.problem);
+				}
+				this.activeCategoryId = backupData.problem.categoryId;
+				localStorage.setItem('trouble_docs_active_cat_id', backupData.problem.categoryId);
+				this.showToast('已成功撤回并恢复故障文档');
+			}
+
+			this.updateScrollMarkers();
 		},
 
 		safeClosePopover(id) {
@@ -1718,6 +2293,11 @@ export default {
 		},
 
 		startEditTitle(id) {
+			const prob = this.problems.find(p => p.id === id);
+			if (prob && !this.canManageShare(prob)) {
+				this.showToast('仅文档创建者支持编辑标题');
+				return;
+			}
 			this.editTitleId = id;
 			this.$nextTick(() => {
 				const ref = this.$refs['titleInput_' + id];
@@ -1753,11 +2333,20 @@ export default {
 		},
 
 		openProblemDialog() {
+			if (!this.canAddProblemInCurrentCategory) {
+				this.showToast('他人共享给您的分类目录暂不支持录入新故障文档');
+				return;
+			}
 			this.problemForm = { title: '', solution: '' };
 			this.problemVisible = true;
 			this.$nextTick(() => { this.$refs.problemForm && this.$refs.problemForm.clearValidate(); });
 		},
+
 		async submitProblem() {
+			if (!this.canAddProblemInCurrentCategory) {
+				this.showToast('他人共享给您的分类目录暂不支持录入新故障文档');
+				return;
+			}
 			this.$refs.problemForm.validate(async valid => {
 				if (valid) {
 					this.apiLoading = true;
@@ -1842,6 +2431,119 @@ export default {
 
 ::-webkit-scrollbar-thumb:hover {
 	background: var(--text-muted);
+}
+
+.btn-tooltip-wrapper {
+	display: inline-block;
+}
+
+.primary-gradient-btn.is-disabled,
+.primary-gradient-btn.is-disabled:hover {
+	background: var(--border-color) !important;
+	color: var(--text-muted) !important;
+	border: none !important;
+	box-shadow: none !important;
+	cursor: not-allowed !important;
+	transform: none !important;
+}
+
+.editable-text-wrapper.is-readonly {
+	cursor: default !important;
+}
+
+.editable-text-wrapper.is-readonly:hover {
+	background-color: transparent !important;
+	border-color: transparent !important;
+}
+
+.scrollbar-markers-track {
+	position: absolute;
+	right: 3px;
+	top: 0;
+	bottom: 0;
+	width: 12px;
+	z-index: 45;
+	pointer-events: none;
+}
+
+.scroll-marker-item {
+	position: absolute;
+	right: 0;
+	width: 16px;
+	height: 16px;
+	transform: translateY(-50%);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	pointer-events: auto;
+	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.marker-dot {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background-color: var(--primary-blue);
+	opacity: 0.65;
+	box-shadow: 0 0 6px rgba(14, 165, 233, 0.4);
+	transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.scroll-marker-item:hover .marker-dot {
+	opacity: 1;
+	transform: scale(1.6);
+	background-color: #38bdf8;
+	box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+}
+
+.scroll-marker-item.is-active .marker-dot {
+	opacity: 1;
+	background-color: #f59e0b;
+	box-shadow: 0 0 10px rgba(245, 158, 11, 0.8);
+	transform: scale(1.3);
+}
+
+.marker-popover-content {
+	padding: 4px;
+}
+
+.marker-popover-title {
+	font-size: 13px;
+	font-weight: 700;
+	color: var(--text-h1);
+	margin-bottom: 6px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.marker-popover-title i {
+	color: var(--primary-blue);
+}
+
+.marker-popover-summary {
+	margin: 0 0 8px 0;
+	font-size: 12px;
+	color: var(--text-muted);
+	line-height: 1.5;
+	display: -webkit-box;
+	-webkit-line-clamp: 3;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	word-break: break-all;
+}
+
+.marker-popover-tip {
+	font-size: 11px;
+	color: var(--primary-blue);
+	font-weight: 600;
+	display: flex;
+	align-items: center;
+	gap: 4px;
 }
 
 .bp-header {
@@ -1976,6 +2678,7 @@ export default {
 	flex-direction: row !important;
 	height: calc(100vh - 64px);
 	overflow: hidden;
+	position: relative;
 }
 
 .bp-sidebar {
@@ -1985,7 +2688,7 @@ export default {
 	border-right: 1px solid var(--border-color);
 	display: flex;
 	flex-direction: column !important;
-	transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s;
+	transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s, transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .bp-sidebar.is-collapsed {
@@ -2418,12 +3121,6 @@ export default {
 	}
 }
 
-@media (max-width: 768px) {
-	.card-deck-grid {
-		grid-template-columns: repeat(2, 1fr);
-	}
-}
-
 .quick-scroll-widget {
 	position: fixed;
 	right: 36px;
@@ -2812,7 +3509,6 @@ export default {
 	background-color: var(--border-color);
 }
 
-/* 非创建者只读共享状态标签样式 */
 .read-only-share-tag {
 	font-size: 11px;
 	font-weight: 600;
@@ -3381,6 +4077,172 @@ export default {
 	margin-right: 12px;
 	margin-top: -2px;
 }
+
+/* 移动端侧边栏抽屉遮罩 */
+.mobile-sidebar-backdrop {
+	position: absolute;
+	top: 56px;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: rgba(0, 0, 0, 0.5);
+	z-index: 90;
+	backdrop-filter: blur(2px);
+}
+
+/* =========================================================
+   移动端 (Mobile) 响应式适配样式
+   ========================================================= */
+@media (max-width: 768px) {
+	/* 1. Header 调整 */
+	.bp-header {
+		padding: 0 12px;
+		height: 56px;
+	}
+	.logo-text {
+		font-size: 16px;
+	}
+	.header-actions {
+		gap: 8px;
+	}
+	.glow-btn.primary-gradient-btn {
+		padding: 7px 10px !important;
+	}
+
+	/* 2. 主体与侧边栏抽屉模式 */
+	.bp-body {
+		height: calc(100vh - 56px);
+		position: relative;
+	}
+
+	.bp-sidebar {
+		position: absolute;
+		top: 0;
+		left: 0;
+		bottom: 0;
+		z-index: 100;
+		width: 260px !important;
+		box-shadow: 4px 0 16px rgba(0, 0, 0, 0.25);
+		transform: translateX(0);
+	}
+	
+	.bp-sidebar.is-collapsed {
+		transform: translateX(-100%);
+		width: 260px !important;
+		opacity: 1 !important;
+	}
+
+	/* 3. 主内容区域 Padding 适配 */
+	.main-content-container {
+		padding: 16px 12px 60px 12px;
+	}
+
+	/* 4. 隐藏右侧挂钩锚点 */
+	.scrollbar-markers-track {
+		display: none !important;
+	}
+
+	/* 5. 分类标题头部上下垂直排布 */
+	.main-header {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 16px;
+	}
+	.category-title {
+		font-size: 22px;
+	}
+	.main-header-actions {
+		flex-direction: column;
+		align-items: stretch;
+		width: 100%;
+	}
+	.main-search {
+		width: 100% !important;
+	}
+
+	/* 6. 卡牌速查区改单列或双列 */
+	.card-deck-grid {
+		grid-template-columns: repeat(2, 1fr) !important;
+	}
+
+	/* 7. 卡片 Header 与 Meta 栏自适应换行 */
+	.card-header {
+		padding: 12px;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 8px;
+	}
+	.card-header-actions {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		width: 100%;
+	}
+
+	.doc-meta-bar {
+		flex-wrap: wrap;
+		gap: 6px;
+		padding: 8px;
+	}
+	.meta-divider {
+		display: none;
+	}
+
+	/* 8. 解决方案按钮组换行 */
+	.solution-header {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 10px;
+	}
+	.solution-actions {
+		flex-wrap: wrap;
+		justify-content: flex-start;
+		gap: 6px;
+	}
+	.action-btn {
+		padding: 4px 8px;
+		font-size: 11px;
+	}
+
+	/* 9. 移动端分页栏优化（居中显示，精简按钮尺寸） */
+	.pagination-wrapper {
+		justify-content: center;
+		padding-top: 16px;
+	}
+	.pagination-wrapper ::v-deep .el-pagination {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 4px;
+	}
+	.pagination-wrapper ::v-deep .el-pagination .el-pager li {
+		min-width: 26px !important;
+		height: 26px !important;
+		line-height: 26px !important;
+		margin: 0 2px !important;
+		font-size: 12px !important;
+	}
+	.pagination-wrapper ::v-deep .el-pagination button {
+		height: 26px !important;
+		line-height: 26px !important;
+		min-width: 26px !important;
+		padding: 0 4px !important;
+	}
+
+	/* 10. 一键置顶悬浮按钮移动 */
+	.quick-scroll-widget {
+		right: 16px;
+		bottom: 20px;
+	}
+
+	/* 11. 撤回 Toast 位置适配 */
+	.undo-toast {
+		width: 90% !important;
+		left: 5% !important;
+		margin-left: 0 !important;
+		top: 64px !important;
+	}
+}
 </style>
 
 <style>
@@ -3526,5 +4388,35 @@ export default {
 	border-radius: 8px !important;
 	box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1) !important;
 	border: 1px solid #e2e8f0 !important;
+}
+.category-filter-toggle {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-top: 10px;
+	padding: 6px 10px;
+	background-color: var(--hover-sidebar);
+	border: 1px solid var(--border-color);
+	border-radius: 8px;
+	cursor: pointer;
+	transition: all 0.2s;
+}
+
+.category-filter-toggle:hover {
+	border-color: var(--primary-blue);
+}
+
+.toggle-label {
+	font-size: 12px;
+	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	transition: color 0.2s;
+}
+
+.toggle-label.is-active {
+	color: var(--primary-blue);
+	font-weight: 600;
 }
 </style>

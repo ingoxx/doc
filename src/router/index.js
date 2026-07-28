@@ -20,6 +20,12 @@ const routes = [
         path: '/register',
         name: 'register',
         component: () => import(/* webpackChunkName: "register" */ '../views/register/register.vue')
+    },
+    // 3. 一级路由：直接渲染 register.vue
+    {
+        path: '/update-password',
+        name: 'updatePassword',
+        component: () => import(/* webpackChunkName: "updatePassword" */ '../views/user/password.vue')
     }
 ]
 
