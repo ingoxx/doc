@@ -65,7 +65,9 @@
 					</div>
 					<div slot="reference" class="avatar-wrapper">
 						<el-avatar class="user-avatar" size="small"
-							src="https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png"></el-avatar>
+							src="https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png">
+						</el-avatar>
+						<span class="login_user">{{ currentUser.username }}</span>	
 					</div>
 				</el-popover>
 			</div>
@@ -2831,6 +2833,11 @@ export default {
 	justify-content: center;
 	cursor: pointer;
 	flex-shrink: 0;
+}
+
+.avatar-wrapper .login_user {
+	font-size: 13px;
+    padding-left: 4px;
 }
 
 .user-avatar {
