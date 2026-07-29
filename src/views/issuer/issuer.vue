@@ -458,8 +458,37 @@
 
 													<transition name="el-fade-in-linear">
 														<div class="attachment-group-container" v-if="prob.attachments && prob.attachments.length > 0" style="display: inline-flex; align-items: center; gap: 6px;">
-															<div class="attachment-badge" @click.stop="previewAttachment(prob.attachments[0], prob)" :title="'点击预览或在线编辑：' + prob.attachments[0].name">
-																<i class="el-icon-edit-outline"></i>
+															
+															<!-- 主附件：针对 .doc(x) / .xls(x) 支持右键 Popover 菜单 -->
+															<el-popover
+																v-if="isOfficeDoc(prob.attachments[0].name)"
+																placement="bottom"
+																trigger="contextmenu"
+																width="140"
+																:popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'"
+															>
+																<div class="action-menu-list">
+																	<div class="action-item" @click.stop="previewAttachment(prob.attachments[0], prob)">
+																		<i class="el-icon-view"></i> <span>预览文件</span>
+																	</div>
+																	<div class="action-divider"></div>
+																	<div class="action-item" @click.stop="downloadFile(prob.attachments[0])">
+																		<i class="el-icon-download"></i> <span>直接下载</span>
+																	</div>
+																</div>
+																<div slot="reference" class="attachment-badge" @click.stop="handleAttachmentClick(prob.attachments[0], prob)" :title="'左键预览 / 右键操作菜单：' + prob.attachments[0].name">
+																	<i class="el-icon-document"></i>
+																	<span class="file-name">{{ prob.attachments[0].name }}</span>
+																	<span v-if="canManageShare(prob)" class="remove-file-btn" @click.stop="removeAttachment(prob, prob.attachments[0], 0)"
+																		title="移除该附件">
+																		<i class="el-icon-close"></i>
+																	</span>
+																</div>
+															</el-popover>
+
+															<!-- 主附件：非 .doc(x)/.xls(x) 直接点击下载 -->
+															<div v-else class="attachment-badge" @click.stop="downloadFile(prob.attachments[0])" :title="'点击直接下载：' + prob.attachments[0].name">
+																<i class="el-icon-download"></i>
 																<span class="file-name">{{ prob.attachments[0].name }}</span>
 																<span v-if="canManageShare(prob)" class="remove-file-btn" @click.stop="removeAttachment(prob, prob.attachments[0], 0)"
 																	title="移除该附件">
@@ -467,6 +496,7 @@
 																</span>
 															</div>
 
+															<!-- 更多附件下拉菜单 -->
 															<el-dropdown v-if="prob.attachments.length > 1" trigger="click" @click.native.stop>
 																<div class="attachment-badge more-attachment-badge" title="查看更多附件">
 																	<span>+{{ prob.attachments.length - 1 }} 个附件</span>
@@ -474,13 +504,42 @@
 																</div>
 																<el-dropdown-menu slot="dropdown" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 																	<el-dropdown-item v-for="(file, fIdx) in prob.attachments.slice(1)" :key="file.id || fIdx">
-																		<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 180px;" @click.stop="previewAttachment(file, prob)">
-																			<span style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px;" :title="'点击预览/编辑：' + file.name">
-																				<i class="el-icon-edit-outline"></i> {{ file.name }}
+																		
+																		<!-- 多附件列表中的 .doc(x) / .xls(x) 关联右键 Popover -->
+																		<el-popover
+																			v-if="isOfficeDoc(file.name)"
+																			placement="right"
+																			trigger="contextmenu"
+																			width="140"
+																			:popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'"
+																		>
+																			<div class="action-menu-list">
+																				<div class="action-item" @click.stop="previewAttachment(file, prob)">
+																					<i class="el-icon-view"></i> <span>预览文件</span>
+																				</div>
+																				<div class="action-divider"></div>
+																				<div class="action-item" @click.stop="downloadFile(file)">
+																					<i class="el-icon-download"></i> <span>直接下载</span>
+																				</div>
+																			</div>
+																			<div slot="reference" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 180px;" @click.stop="handleAttachmentClick(file, prob)">
+																				<span style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px;" :title="'左键预览 / 右键操作菜单：' + file.name">
+																					<i class="el-icon-document"></i> {{ file.name }}
+																				</span>
+																				<i v-if="canManageShare(prob)" class="el-icon-close" style="color: #ef4444; cursor: pointer; font-size: 13px;"
+																					@click.stop="removeAttachment(prob, file, fIdx + 1)" title="移除此附件"></i>
+																			</div>
+																		</el-popover>
+
+																		<!-- 多附件列表中非 .doc(x)/.xls(x) 点击直接下载 -->
+																		<div v-else style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 180px;" @click.stop="downloadFile(file)">
+																			<span style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px;" :title="'点击直接下载：' + file.name">
+																				<i class="el-icon-download"></i> {{ file.name }}
 																			</span>
 																			<i v-if="canManageShare(prob)" class="el-icon-close" style="color: #ef4444; cursor: pointer; font-size: 13px;"
 																				@click.stop="removeAttachment(prob, file, fIdx + 1)" title="移除此附件"></i>
 																		</div>
+
 																	</el-dropdown-item>
 																</el-dropdown-menu>
 															</el-dropdown>
@@ -1342,6 +1401,24 @@ export default {
 		handleResize() {
 			this.checkMobile();
 			this.updateScrollMarkers();
+		},
+
+		// ======== 判断文件类型是否属于 .doc(x) 或 .xls(x) ========
+		isOfficeDoc(filename) {
+			if (!filename) return false;
+			const ext = this.getFileExt(filename).toLowerCase();
+			return ['doc', 'docx', 'xls', 'xlsx'].includes(ext);
+		},
+
+		// ======== 附件点击逻辑处理 ========
+		handleAttachmentClick(file, prob) {
+			if (this.isOfficeDoc(file.name)) {
+				// 如果是 Office 文档，点击进行在线预览
+				this.previewAttachment(file, prob);
+			} else {
+				// 其他非 Office 文档类型，直接点击下载
+				this.downloadFile(file);
+			}
 		},
 
 		// ======== 解码 Quoted-Printable 传输编码 (=3D 等) 辅助工具函数 ========
