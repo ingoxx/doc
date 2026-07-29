@@ -342,7 +342,7 @@
 												<div class="index-badge">#{{ String((currentPage - 1) * pageSize + index + 1).padStart(2, '0') }}</div>
 
 												<el-input v-if="editTitleId === prob.id" :ref="'titleInput_' + prob.id"
-													v-model="prob.title" size="small" class="inline-edit-input"
+													v-model="prob.title" size="small" class="inline-edit-input modern-el-input"
 													@blur="finishEditTitle(prob)" @keyup.enter.native="finishEditTitle(prob)"
 													@click.stop.native></el-input>
 												
@@ -539,7 +539,7 @@
 
 											<el-input v-if="editSolutionId === prob.id" :ref="'solutionInput_' + prob.id"
 												type="textarea" :autosize="{ minRows: 4, maxRows: 12 }" v-model="prob.solution"
-												class="inline-edit-textarea" @blur="finishEditSolution(prob)"></el-input>
+												class="inline-edit-textarea modern-el-input" @blur="finishEditSolution(prob)"></el-input>
 											
 											<div v-else class="solution-code editable-block">
 												<div v-if="isMarkdown(prob.solution)" class="markdown-body" v-html="renderMarkdown(prob.solution)"></div>
@@ -606,24 +606,24 @@
 			:visible.sync="svnDialogVisible" :width="dialogWidth" :close-on-click-modal="false" custom-class="modern-dialog">
 			<el-form :model="svnForm" ref="svnFormRef" :rules="svnRules" size="small" label-position="top">
 				<el-form-item label="SVN 项目文件 HTTP/HTTPS 地址 (Repository URL)" prop="repoUrl">
-					<el-input v-model="svnForm.repoUrl" placeholder="例如: http://192.168.1.100/svn/repo/trouble.txt 或 https://..."></el-input>
+					<el-input class="modern-el-input" v-model="svnForm.repoUrl" placeholder="例如: http://192.168.1.100/svn/repo/trouble.txt 或 https://..."></el-input>
 				</el-form-item>
 				
 				<el-row :gutter="16">
 					<el-col :span="12">
 						<el-form-item label="SVN 用户名 (Username)" prop="username">
-							<el-input v-model="svnForm.username" placeholder="请输入 SVN 登录账号"></el-input>
+							<el-input class="modern-el-input" v-model="svnForm.username" placeholder="请输入 SVN 登录账号"></el-input>
 						</el-form-item>
 					</el-col>
 					<el-col :span="12">
 						<el-form-item label="SVN 密码 (Password)" prop="password">
-							<el-input v-model="svnForm.password" type="password" show-password placeholder="请输入 SVN 登录密码"></el-input>
+							<el-input class="modern-el-input" v-model="svnForm.password" type="password" show-password placeholder="请输入 SVN 登录密码"></el-input>
 						</el-form-item>
 					</el-col>
 				</el-row>
 
 				<el-form-item label="提交日志备注 (Commit Message)" prop="commitMsg" v-if="svnForm.action === 'commit'">
-					<el-input type="textarea" :rows="3" v-model="svnForm.commitMsg" placeholder="例如: 修复了 Nginx 502 Bad Gateway 排错流程..."></el-input>
+					<el-input class="modern-el-input" type="textarea" :rows="3" v-model="svnForm.commitMsg" placeholder="例如: 修复了 Nginx 502 Bad Gateway 排错流程..."></el-input>
 				</el-form-item>
 
 				<div class="share-summary-bar" style="margin-top: 10px;">
@@ -711,6 +711,7 @@
 					</div>
 					<div v-else class="preview-iframe-container">
 						<iframe 
+							v-if="previewFile && previewFile.url"
 							:src="'https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(previewFile.url)" 
 							width="100%" 
 							height="500px" 
@@ -719,7 +720,7 @@
 					</div>
 				</div>
 
-				<!-- 2. Word 在线编辑/预览（已优化：支持中文目录与层级识别） -->
+				<!-- 2. Word 在线编辑/预览 -->
 				<div v-else-if="previewFileType === 'office_word'" class="preview-word-container">
 					<div v-if="isEditMode" class="word-editor-wrapper">
 						<div class="word-toolbar">
@@ -727,6 +728,9 @@
 								<el-button size="mini" @click="execWordCmd('bold')" title="加粗"><b>B</b></el-button>
 								<el-button size="mini" @click="execWordCmd('italic')" title="斜体"><i>I</i></el-button>
 								<el-button size="mini" @click="execWordCmd('underline')" title="下划线"><u>U</u></el-button>
+								<el-button size="mini" @click="execWordCmd('justifyLeft')" title="居左对齐"><i class="el-icon-s-unfold"></i></el-button>
+								<el-button size="mini" @click="execWordCmd('justifyCenter')" title="居中对齐"><i class="el-icon-s-operation"></i></el-button>
+								<el-button size="mini" @click="execWordCmd('justifyRight')" title="居右对齐"><i class="el-icon-s-fold"></i></el-button>
 								<el-button size="mini" @click="execWordCmd('formatBlock', '<h1>')" title="一级标题 / 目录章">H1</el-button>
 								<el-button size="mini" @click="execWordCmd('formatBlock', '<h2>')" title="二级标题 / 目录节">H2</el-button>
 								<el-button size="mini" @click="execWordCmd('formatBlock', '<h3>')" title="三级标题">H3</el-button>
@@ -734,7 +738,7 @@
 								<el-button size="mini" @click="execWordCmd('insertUnorderedList')" title="无序列表"><i class="el-icon-tickets"></i> 列表</el-button>
 							</el-button-group>
 							<span class="toolbar-hint" style="margin-left: 12px; font-size: 12px; color: var(--primary-blue);">
-								<i class="el-icon-info"></i> 已开启富文本模式，已支持中文 Word 标题 (H1-H3) 与 目录 (TOC) 格式解析
+								<i class="el-icon-info"></i> 已开启富文本模式，完美还原居中、缩进、目录及级联标题格式
 							</span>
 						</div>
 						<div 
@@ -746,6 +750,7 @@
 					</div>
 					<div v-else class="preview-iframe-container">
 						<iframe 
+							v-if="previewFile && previewFile.url && !isEditMode"
 							:src="'https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(previewFile.url)" 
 							width="100%" 
 							height="500px" 
@@ -767,7 +772,7 @@
 				<!-- 5. 纯文本 / 代码预览 -->
 				<div v-else-if="previewFileType === 'text'" class="preview-text-container">
 					<div v-if="isEditMode">
-						<el-input type="textarea" :rows="16" v-model="previewContent" class="preview-text-input"></el-input>
+						<el-input type="textarea" :rows="16" v-model="previewContent" class="preview-text-input modern-el-input"></el-input>
 					</div>
 					<div v-else>
 						<div v-if="isMarkdown(previewContent)" class="markdown-body dialog-preview-body" v-html="renderMarkdown(previewContent)"></div>
@@ -845,7 +850,7 @@
 			custom-class="modern-dialog">
 			<el-form size="small" label-position="top">
 				<el-form-item label="选择目标分类目录">
-					<el-select v-model="moveToCategoryId" placeholder="请选择你要转移到的目标目录" style="width: 100%;"
+					<el-select class="modern-el-input" v-model="moveToCategoryId" placeholder="请选择你要转移到的目标目录" style="width: 100%;"
 						:popper-class="isDark ? 'custom-dark-select' : 'custom-light-select'">
 						<el-option v-for="cat in categories" :key="cat.id" :label="cat.name" :value="cat.id"
 							:disabled="cat.id === (moveTargetProblem && moveTargetProblem.categoryId)">
@@ -898,7 +903,7 @@
 			custom-class="modern-dialog">
 			<el-form :model="categoryForm" ref="categoryForm" :rules="categoryRules" size="small" label-position="top" @submit.native.prevent="submitCategory">
 				<el-form-item label="分类名称" prop="name">
-					<el-input v-model="categoryForm.name" placeholder="例如: 前端工程化、数据库排错..." @keyup.enter.native="submitCategory"></el-input>
+					<el-input class="modern-el-input" v-model="categoryForm.name" placeholder="例如: 前端工程化、数据库排错..." @keyup.enter.native="submitCategory"></el-input>
 				</el-form-item>
 			</el-form>
 			<div slot="footer">
@@ -913,11 +918,11 @@
 			:close-on-click-modal="false" custom-class="modern-dialog">
 			<el-form :model="problemForm" ref="problemForm" :rules="problemRules" size="small" label-position="top">
 				<el-form-item label="故障现象描述 / 标题" prop="title">
-					<el-input v-model="problemForm.title"
+					<el-input class="modern-el-input" v-model="problemForm.title"
 						placeholder="请描述报错信息或现象 (例如: Nginx 502 Bad Gateway)"></el-input>
 				</el-form-item>
 				<el-form-item label="排查思路与详细解决代码 (支持粘贴代码/图片/Markdown文本)" prop="solution">
-					<el-input type="textarea" :autosize="{ minRows: 6, maxRows: 12 }" v-model="problemForm.solution"
+					<el-input class="modern-el-input" type="textarea" :autosize="{ minRows: 6, maxRows: 12 }" v-model="problemForm.solution"
 						placeholder="可以粘贴 Bash 命令、日志、代码块、图片URL或 Markdown 文本..."></el-input>
 				</el-form-item>
 
@@ -943,10 +948,10 @@
 			:close-on-click-modal="false" custom-class="modern-dialog">
 			<el-form :model="importForm" ref="importForm" :rules="problemRules" size="small" label-position="top">
 				<el-form-item label="故障现象描述 / 标题" prop="title">
-					<el-input v-model="importForm.title" placeholder="请核对或修改导入文档标题"></el-input>
+					<el-input class="modern-el-input" v-model="importForm.title" placeholder="请核对或修改导入文档标题"></el-input>
 				</el-form-item>
 				<el-form-item label="排查思路与详细内容 (已自动提取文档内容，可直接编辑修改)" prop="solution">
-					<el-input type="textarea" :autosize="{ minRows: 8, maxRows: 16 }" v-model="importForm.solution"
+					<el-input class="modern-el-input" type="textarea" :autosize="{ minRows: 8, maxRows: 16 }" v-model="importForm.solution"
 						placeholder="文档排查思路与代码..."></el-input>
 				</el-form-item>
 
@@ -1162,7 +1167,7 @@ export default {
 			isEditMode: false,
 			excelData: [],
 			wordContent: '',
-			wordEmbeddedFiles: [], // 新增：保存 Word 文档内置提取出的附件对象
+			wordEmbeddedFiles: [],
 
 			categoryForm: { name: '' },
 			categoryRules: { name: [{ required: true, message: '请输入分类名称', trigger: 'blur' }] },
@@ -1337,6 +1342,19 @@ export default {
 		handleResize() {
 			this.checkMobile();
 			this.updateScrollMarkers();
+		},
+
+		// ======== 解码 Quoted-Printable 传输编码 (=3D 等) 辅助工具函数 ========
+		decodeQuotedPrintable(str) {
+			if (!str || typeof str !== 'string') return '';
+			if (!str.includes('=3D') && !/=([0-9A-F]{2})/i.test(str)) return str;
+			try {
+				let cleaned = str.replace(/=\r?\n/g, '');
+				let percentEncoded = cleaned.replace(/=([0-9A-F]{2})/gi, '%$1');
+				return decodeURIComponent(percentEncoded);
+			} catch (e) {
+				return str.replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
+			}
 		},
 
 		// ======== SVN 前端直连同步逻辑 ========
@@ -1566,10 +1584,10 @@ export default {
 			this.previewDialogVisible = true;
 			this.previewLoading = false;
 
-			// 若为 Word 文件，自动扫描并提取其中的内嵌附件
 			if (this.previewFileType === 'office_word') {
 				try {
-					const resp = await fetch(file.url);
+					const fileUrl = file.url + (file.url.includes('?') ? '&' : '?') + '_t=' + Date.now();
+					const resp = await fetch(fileUrl, { cache: 'no-cache' });
 					if (resp.ok) {
 						const ab = await resp.arrayBuffer();
 						await this.extractWordEmbeddings(ab);
@@ -1580,7 +1598,6 @@ export default {
 			}
 		},
 
-		// ======== 新增：利用 JSZip 从 .docx 解压提取内嵌在 word/embeddings/ 下的附件文件 ========
 		async extractWordEmbeddings(arrayBuffer) {
 			this.wordEmbeddedFiles = [];
 			try {
@@ -1613,12 +1630,109 @@ export default {
 		execWordCmd(cmd, value = null) {
 			document.execCommand(cmd, false, value);
 			if (this.$refs.wordEditableBox) {
-				this.wordContent = this.$refs.wordEditableBox.innerHTML;
+				this.wordContent = this.decodeQuotedPrintable(this.$refs.wordEditableBox.innerHTML);
 			}
 		},
 
 		onWordContentInput(e) {
-			this.wordContent = e.target.innerHTML;
+			this.wordContent = this.decodeQuotedPrintable(e.target.innerHTML);
+		},
+
+		// ======== 精准提取 Word document.xml 原生段落排版 (对齐/缩进) ========
+		async parseWordXmlStyles(arrayBuffer) {
+			const paragraphStyles = [];
+			try {
+				await this.loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+				if (window.JSZip && arrayBuffer) {
+					const zip = await window.JSZip.loadAsync(arrayBuffer);
+					const docXmlFile = zip.file("word/document.xml");
+					if (docXmlFile) {
+						const xmlText = await docXmlFile.async("text");
+						const parser = new DOMParser();
+						const xmlDoc = parser.parseFromString(xmlText, "application/xml");
+						const pNodes = xmlDoc.getElementsByTagName("w:p");
+						for (let i = 0; i < pNodes.length; i++) {
+							const p = pNodes[i];
+							const pPr = p.getElementsByTagName("w:pPr")[0];
+							let align = null;
+							let firstLineIndent = null;
+							let leftIndent = null;
+
+							if (pPr) {
+								const jc = pPr.getElementsByTagName("w:jc")[0];
+								if (jc) {
+									align = jc.getAttribute("w:val");
+								}
+								const ind = pPr.getElementsByTagName("w:ind")[0];
+								if (ind) {
+									const fl = ind.getAttribute("w:firstLine");
+									const flChars = ind.getAttribute("w:firstLineChars");
+									const left = ind.getAttribute("w:left");
+									const leftChars = ind.getAttribute("w:leftChars");
+
+									if (fl) {
+										const pt = Math.round(parseInt(fl, 10) / 20);
+										if (!isNaN(pt) && pt > 0) firstLineIndent = `${pt}pt`;
+									} else if (flChars) {
+										const chars = parseInt(flChars, 10) / 100;
+										if (!isNaN(chars) && chars > 0) firstLineIndent = `${chars}em`;
+									}
+
+									if (left) {
+										const pt = Math.round(parseInt(left, 10) / 20);
+										if (!isNaN(pt) && pt > 0) leftIndent = `${pt}pt`;
+									} else if (leftChars) {
+										const chars = parseInt(leftChars, 10) / 100;
+										if (!isNaN(chars) && chars > 0) leftIndent = `${chars}em`;
+									}
+								}
+							}
+							paragraphStyles.push({ align, firstLineIndent, leftIndent });
+						}
+					}
+				}
+			} catch (e) {
+				console.warn('解析 Word XML 格式属性异常:', e);
+			}
+			return paragraphStyles;
+		},
+
+		// ======== 将提取的样式注入 HTML DOM 节点 inline style ========
+		applyWordFormatting(htmlResult, xmlStyles = []) {
+			if (!htmlResult) return htmlResult;
+			const tempDiv = document.createElement('div');
+			tempDiv.innerHTML = htmlResult;
+
+			// 1. 将 Mammoth 的 align-center/right/justify 转换给元素 style 赋值
+			const alignClasses = ['align-center', 'align-right', 'align-justify', 'align-left'];
+			alignClasses.forEach(cls => {
+				const alignVal = cls.replace('align-', '');
+				const nodes = tempDiv.querySelectorAll('.' + cls);
+				nodes.forEach(node => {
+					node.style.textAlign = alignVal;
+				});
+			});
+
+			// 2. 将 XML 内部精准解析的居中/首行缩进/左缩进赋值给 HTML 段落节点
+			if (xmlStyles && xmlStyles.length > 0) {
+				const blockElems = tempDiv.querySelectorAll('p, h1, h2, h3, h4, h5, h6, blockquote, li');
+				blockElems.forEach((elem, idx) => {
+					const styleObj = xmlStyles[idx];
+					if (styleObj) {
+						if (styleObj.align && (!elem.style.textAlign || elem.style.textAlign === 'initial')) {
+							elem.style.textAlign = styleObj.align;
+						}
+						if (styleObj.firstLineIndent && !elem.style.textIndent) {
+							elem.style.textIndent = styleObj.firstLineIndent;
+						}
+						if (styleObj.leftIndent && !elem.style.marginLeft) {
+							elem.style.marginLeft = styleObj.leftIndent;
+						}
+					}
+				});
+			}
+
+			return tempDiv.innerHTML;
 		},
 
 		async handleToggleEditMode(val) {
@@ -1628,7 +1742,8 @@ export default {
 			try {
 				if (this.previewFileType === 'office_excel') {
 					await this.loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
-					const resp = await fetch(this.previewFile.url);
+					const fileUrl = this.previewFile.url + (this.previewFile.url.includes('?') ? '&' : '?') + '_t=' + Date.now();
+					const resp = await fetch(fileUrl, { cache: 'no-cache' });
 					if (!resp.ok) throw new Error('读取 Excel 失败');
 					const arrayBuffer = await resp.arrayBuffer();
 					const wb = window.XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
@@ -1658,66 +1773,100 @@ export default {
 					}
 
 					try {
+						await this.loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
 						await this.loadScript('https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js');
 					} catch (e) {
-						console.warn('加载 mammoth.js 脚本失败:', e);
+						console.warn('加载 word 解析脚本依赖失败:', e);
 					}
 
-					const resp = await fetch(this.previewFile.url);
-					if (!resp.ok) throw new Error('读取 Word 失败');
-					const arrayBuffer = await resp.arrayBuffer();
-
-					// 异步解析扫描 Word 内置嵌入附件
-					await this.extractWordEmbeddings(arrayBuffer);
+					let arrayBuffer = null;
+					try {
+						const fileUrl = this.previewFile.url + (this.previewFile.url.includes('?') ? '&' : '?') + '_t=' + Date.now();
+						const resp = await fetch(fileUrl, { cache: 'no-cache' });
+						if (resp.ok) {
+							arrayBuffer = await resp.arrayBuffer();
+						}
+					} catch (fErr) {
+						console.warn('Fetch Word 文件失败:', fErr);
+					}
 
 					let htmlResult = '';
-					if (window.mammoth) {
-						try {
-							// 核心修复：完善中文 Word 标题与目录 (TOC 1~3, 目录 1~3) 的映射体系
-							const customStyleMap = [
-								"p[style-name='标题 1'] => h1:fresh",
-								"p[style-name='标题 2'] => h2:fresh",
-								"p[style-name='标题 3'] => h3:fresh",
-								"p[style-name='标题 4'] => h4:fresh",
-								"p[style-name='标题 5'] => h5:fresh",
-								"p[style-name='标题 6'] => h6:fresh",
-								"p[style-name='标题'] => h1:fresh",
-								"p[style-name='副标题'] => h4.subtitle:fresh",
-								"p[style-name='目录 1'] => p.toc-item.toc-1:fresh",
-								"p[style-name='目录 2'] => p.toc-item.toc-2:fresh",
-								"p[style-name='目录 3'] => p.toc-item.toc-3:fresh",
-								"p[style-name='TOC 1'] => p.toc-item.toc-1:fresh",
-								"p[style-name='TOC 2'] => p.toc-item.toc-2:fresh",
-								"p[style-name='TOC 3'] => p.toc-item.toc-3:fresh",
-								"p[style-name='Table of Contents'] => div.toc-wrapper:fresh",
-								"p[style-name='Heading 1'] => h1:fresh",
-								"p[style-name='Heading 2'] => h2:fresh",
-								"p[style-name='Heading 3'] => h3:fresh",
-								"p[style-name='Heading 4'] => h4:fresh",
-								"p[style-name='List Paragraph'] => li:fresh",
-								"p[style-name='引用'] => blockquote:fresh",
-								"r[style-name='Strong'] => strong",
-								"r[style-name='加粗'] => strong",
-								"r[style-name='Hyperlink'] => a"
-							];
+					let xmlStyles = [];
 
-							const result = await window.mammoth.convertToHtml(
-								{ arrayBuffer: arrayBuffer },
-								{ 
-									styleMap: customStyleMap, 
-									includeDefaultStyleMap: true,
-									ignoreEmptyParagraphs: false 
-								}
-							);
-							htmlResult = result.value || '';
-						} catch (mErr) {
-							console.warn('Mammoth convertToHtml 失败:', mErr);
-							const textDecoder = new TextDecoder('utf-8');
-							htmlResult = `<p>${textDecoder.decode(arrayBuffer)}</p>`;
-						}
-					} else {
+					if (arrayBuffer && arrayBuffer.byteLength > 0) {
+						await this.extractWordEmbeddings(arrayBuffer);
+						xmlStyles = await this.parseWordXmlStyles(arrayBuffer);
+
 						const textDecoder = new TextDecoder('utf-8');
-						htmlResult = `<p>${textDecoder.decode(arrayBuffer)}</p>`;
+						let rawText = textDecoder.decode(arrayBuffer).trim();
+						// 自动将转义的 =3D 及 Quoted-Printable 字符格式化为标准 HTML 文本
+						rawText = this.decodeQuotedPrintable(rawText);
+
+						if (rawText.startsWith('<') || rawText.startsWith('\ufeff<') || rawText.includes('<html')) {
+							const bodyMatch = rawText.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+							if (bodyMatch && bodyMatch[1]) {
+								htmlResult = bodyMatch[1].trim();
+							} else {
+								htmlResult = rawText;
+							}
+						} else if (window.mammoth) {
+							try {
+								const customStyleMap = [
+									"p[alignment='center'] => p.align-center:fresh",
+									"p[alignment='right'] => p.align-right:fresh",
+									"p[alignment='justify'] => p.align-justify:fresh",
+									"p[alignment='left'] => p.align-left:fresh",
+									"p[style-name='标题 1'] => h1:fresh",
+									"p[style-name='标题 2'] => h2:fresh",
+									"p[style-name='标题 3'] => h3:fresh",
+									"p[style-name='标题 4'] => h4:fresh",
+									"p[style-name='标题 5'] => h5:fresh",
+									"p[style-name='标题 6'] => h6:fresh",
+									"p[style-name='标题'] => h1:fresh",
+									"p[style-name='副标题'] => h4.subtitle:fresh",
+									"p[style-name='目录 1'] => p.toc-item.toc-1:fresh",
+									"p[style-name='目录 2'] => p.toc-item.toc-2:fresh",
+									"p[style-name='目录 3'] => p.toc-item.toc-3:fresh",
+									"p[style-name='TOC 1'] => p.toc-item.toc-1:fresh",
+									"p[style-name='TOC 2'] => p.toc-item.toc-2:fresh",
+									"p[style-name='TOC 3'] => p.toc-item.toc-3:fresh",
+									"p[style-name='Table of Contents'] => div.toc-wrapper:fresh",
+									"p[style-name='Heading 1'] => h1:fresh",
+									"p[style-name='Heading 2'] => h2:fresh",
+									"p[style-name='Heading 3'] => h3:fresh",
+									"p[style-name='Heading 4'] => h4:fresh",
+									"p[style-name='List Paragraph'] => li:fresh",
+									"p[style-name='引用'] => blockquote:fresh",
+									"r[style-name='Strong'] => strong",
+									"r[style-name='加粗'] => strong",
+									"r[style-name='Hyperlink'] => a"
+								];
+
+								const options = {
+									styleMap: customStyleMap,
+									includeDefaultStyleMap: true,
+									ignoreEmptyParagraphs: false
+								};
+
+								if (window.mammoth.transforms && window.mammoth.transforms.paragraphWithAlignment) {
+									options.transformDocument = window.mammoth.transforms.paragraphWithAlignment;
+								}
+
+								const result = await window.mammoth.convertToHtml({ arrayBuffer: arrayBuffer }, options);
+								htmlResult = result.value || '';
+							} catch (mErr) {
+								console.warn('Mammoth convertToHtml 失败:', mErr);
+								htmlResult = rawText;
+							}
+						}
+					}
+
+					// 解码并注入居中、缩进排版格式
+					htmlResult = this.decodeQuotedPrintable(htmlResult);
+					htmlResult = this.applyWordFormatting(htmlResult, xmlStyles);
+
+					if (!htmlResult && this.wordContent && !this.wordContent.includes('解析无内容')) {
+						htmlResult = this.decodeQuotedPrintable(this.wordContent);
 					}
 
 					this.wordContent = htmlResult || '<p>【该 Word 文档为空或解析无内容】</p>';
@@ -1728,7 +1877,8 @@ export default {
 					});
 				}
 				else if (this.previewFileType === 'text') {
-					const resp = await fetch(this.previewFile.url);
+					const fileUrl = this.previewFile.url + (this.previewFile.url.includes('?') ? '&' : '?') + '_t=' + Date.now();
+					const resp = await fetch(fileUrl, { cache: 'no-cache' });
 					this.previewContent = await resp.text();
 				}
 			} catch (e) {
@@ -1784,17 +1934,20 @@ export default {
 				}
 				else if (this.previewFileType === 'office_word') {
 					try {
+						await this.loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
 						await this.loadScript('https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.min.js');
 					} catch (e) {
-						console.warn('加载 html-docx-js 失败:', e);
+						console.warn('加载 docx 导出库失败:', e);
 					}
 
 					let currentHtml = this.wordContent;
 					if (this.$refs.wordEditableBox) {
 						currentHtml = this.$refs.wordEditableBox.innerHTML;
 					}
+					// 在转换保存前确保没有任何残存的 =3D 字符
+					currentHtml = this.decodeQuotedPrintable(currentHtml);
+					this.wordContent = currentHtml;
 
-					// 重新保存回 Word 时，注入带层次缩进的 CSS，保持目录层级样式
 					const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
 					<style>
 						body { font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif; font-size: 11pt; line-height: 1.6; color: #1e293b; }
@@ -1813,7 +1966,7 @@ export default {
 					</style>
 					</head><body>${currentHtml}</body></html>`;
 
-					if (window.htmlDocx) {
+					if (window.htmlDocx && typeof window.htmlDocx.asBlob === 'function') {
 						newBlob = window.htmlDocx.asBlob(fullHtml);
 						if (!filename.toLowerCase().endsWith('.docx')) {
 							filename = filename.replace(/\.[^/.]+$/, "") + ".docx";
@@ -3826,17 +3979,20 @@ export default {
 	margin-top: 12px;
 }
 
-.modern-el-input ::v-deep .el-input__inner {
+/* 统一控制所有现代 Input 与 Select 框的深浅主题背景样式，确保与搜索框背景色一致 */
+.modern-el-input ::v-deep .el-input__inner,
+.modern-el-input ::v-deep .el-textarea__inner {
 	background-color: var(--bg-app) !important;
-	border-color: var(--border-color);
-	color: var(--text-p);
+	border-color: var(--border-color) !important;
+	color: var(--text-p) !important;
 	border-radius: 8px;
 	font-size: 13px;
 	transition: border-color 0.2s;
 }
 
-.modern-el-input ::v-deep .el-input__inner:focus {
-	border-color: var(--primary-blue);
+.modern-el-input ::v-deep .el-input__inner:focus,
+.modern-el-input ::v-deep .el-textarea__inner:focus {
+	border-color: var(--primary-blue) !important;
 }
 
 .modern-el-input ::v-deep .el-input__prefix {
@@ -5243,16 +5399,17 @@ export default {
 	color: var(--text-h1);
 }
 
+/* 暗黑模式下弹窗与全域输入框的统一背景调整 */
 .bp-wrapper.is-dark ::v-deep .el-input__inner,
-.bp-wrapper.is-dark ::v-dark .el-textarea__inner {
-	background-color: var(--code-bg);
-	border-color: var(--border-color);
-	color: var(--text-p);
+.bp-wrapper.is-dark ::v-deep .el-textarea__inner {
+	background-color: var(--bg-app) !important;
+	border-color: var(--border-color) !important;
+	color: var(--text-p) !important;
 }
 
 .bp-wrapper.is-dark ::v-deep .el-input__inner:focus,
 .bp-wrapper.is-dark ::v-deep .el-textarea__inner:focus {
-	border-color: var(--primary-blue);
+	border-color: var(--primary-blue) !important;
 }
 
 .bp-wrapper.is-dark ::v-deep .el-loading-mask {
