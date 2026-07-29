@@ -37,6 +37,8 @@ import { Avatar } from 'element-ui'
 import { Dropdown } from 'element-ui'
 import { DropdownMenu} from 'element-ui'
 import { DropdownItem} from 'element-ui'
+import { Radio } from 'element-ui'
+import { ButtonGroup } from 'element-ui'
 
 Vue.use(Table)
 Vue.use(TableColumn)
@@ -68,6 +70,8 @@ Vue.use(Avatar)
 Vue.use(Dropdown)
 Vue.use(DropdownMenu)
 Vue.use(DropdownItem)
+Vue.use(Radio)
+Vue.use(ButtonGroup)
 Vue.config.productionTip = false
 
 

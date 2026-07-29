@@ -91,24 +91,6 @@
 						<el-input class="modern-el-input" v-model="searchCategoryQuery" placeholder="搜索分类目录..."
 							prefix-icon="el-icon-search" clearable></el-input>
 					</div>
-
-					<!-- 带有移入提示的过滤开关 -->
-					<el-tooltip
-						placement="right"
-						:content="onlyMyCategories ? '点击关闭：可查看别人共享给你的目录分类' : '点击开启：过滤他人共享，仅看自己创建的分类'"
-						:open-delay="200">
-						<div class="category-filter-toggle">
-							<span class="toggle-label" :class="{ 'is-active': onlyMyCategories }">
-								<i class="el-icon-user"></i> 只看我创建的
-							</span>
-							<el-switch
-								v-model="onlyMyCategories"
-								size="mini"
-								active-color="#0ea5e9"
-								@change="handleFilterSwitchChange">
-							</el-switch>
-						</div>
-					</el-tooltip>
 				</div>
 
 				<div class="menu-list" v-loading="apiLoading">
@@ -129,7 +111,6 @@
 							<div v-else class="menu-text-wrapper">
 								<span class="menu-text" :title="cat.name">{{ cat.name }}</span>
 								
-								<!-- 分类共享用户标识下拉展示 -->
 								<el-popover v-if="cat.sharedUsers && cat.sharedUsers.length > 0" placement="right" trigger="hover" width="200"
 									:popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 									<div class="shared-users-popover-content">
@@ -247,11 +228,11 @@
 								:visible-arrow="false"
 								:popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 								<div class="action-menu-list">
-									<div class="action-item" @click="exportToMarkdown('all')">
-										<i class="el-icon-document-copy"></i> <span>直接导出当前页全量</span>
+									<div class="action-item" @click="openExportFormatDialog('all')">
+										<i class="el-icon-document-copy"></i> <span>导出当前页全量</span>
 									</div>
 									<div class="action-item" :class="{ 'is-disabled': selectedProblemIds.length === 0 }"
-										@click="selectedProblemIds.length > 0 && exportToMarkdown('selected')">
+										@click="selectedProblemIds.length > 0 && openExportFormatDialog('selected')">
 										<i class="el-icon-finished"></i> <span>导出勾选项 ({{ selectedProblemIds.length }})</span>
 									</div>
 									<div class="action-divider"></div>
@@ -278,7 +259,7 @@
 							<div class="batch-banner-right">
 								<el-button size="mini" plain @click="toggleBatchMode">取 消</el-button>
 								<el-button size="mini" type="primary" class="primary-gradient-btn"
-									@click="exportToMarkdown('selected')"
+									@click="openExportFormatDialog('selected')"
 									:disabled="selectedProblemIds.length === 0">导出已选项</el-button>
 							</div>
 						</div>
@@ -376,7 +357,7 @@
 												<span class="update-time"><i class="el-icon-time"></i> {{ prob.updatedAt || '刚刚' }}</span>
 												<div class="action-icons">
 													<el-button type="text" class="icon-btn" icon="el-icon-download"
-														@click.stop="exportSingleProblem(prob)" title="仅导出此文档"></el-button>
+														@click.stop="openExportFormatDialog('single', prob)" title="仅导出此文档"></el-button>
 													
 													<el-button v-if="canManageShare(prob)" type="text" class="card-delete-btn icon-btn"
 														icon="el-icon-delete" @click.stop="requestDeleteProblem(prob.id)"
@@ -386,7 +367,7 @@
 										</div>
 
 										<div class="card-body" @click.stop>
-											<!-- 元数据栏 (增强共享用户展示与下拉框预览) -->
+											<!-- 元数据栏 -->
 											<div class="doc-meta-bar">
 												<div class="meta-item creator" title="文档创建者">
 													<i class="el-icon-user-solid"></i>
@@ -433,13 +414,11 @@
 													<i class="el-icon-share"></i>
 													<span class="meta-label">共享：</span>
 													
-													<!-- 有指定共享用户时 -->
 													<template v-if="prob.sharedUsers && prob.sharedUsers.length > 0">
 														<span class="shared-user-name-chip" v-for="(u, uIdx) in prob.sharedUsers.slice(0, 2)" :key="u.id">
 															{{ u.username }}{{ uIdx < Math.min(prob.sharedUsers.length, 2) - 1 ? '、' : '' }}
 														</span>
 
-														<!-- 共享用户超过2人时下拉Popover预览 -->
 														<el-popover v-if="prob.sharedUsers.length > 2" placement="top" trigger="hover" width="220"
 															:popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 															<div class="shared-users-popover-content">
@@ -454,10 +433,8 @@
 														</el-popover>
 													</template>
 
-													<!-- 未共享/私有 -->
 													<span v-else class="read-only-share-tag">未指定(仅自己)</span>
 
-													<!-- 设为/管理共享用户按钮 -->
 													<el-button v-if="canManageShare(prob)" type="text" class="manage-share-btn" icon="el-icon-setting"
 														@click.stop="openShareDialog('problem', prob)" title="点击管理或取消共享用户">
 														设置
@@ -481,9 +458,8 @@
 
 													<transition name="el-fade-in-linear">
 														<div class="attachment-group-container" v-if="prob.attachments && prob.attachments.length > 0" style="display: inline-flex; align-items: center; gap: 6px;">
-															<!-- 显示第 1 个附件名称 -->
-															<div class="attachment-badge" @click.stop="downloadFile(prob.attachments[0])" :title="'点击下载附件：' + prob.attachments[0].name">
-																<i class="el-icon-document"></i>
+															<div class="attachment-badge" @click.stop="previewAttachment(prob.attachments[0], prob)" :title="'点击预览或在线编辑：' + prob.attachments[0].name">
+																<i class="el-icon-edit-outline"></i>
 																<span class="file-name">{{ prob.attachments[0].name }}</span>
 																<span v-if="canManageShare(prob)" class="remove-file-btn" @click.stop="removeAttachment(prob, prob.attachments[0], 0)"
 																	title="移除该附件">
@@ -491,7 +467,6 @@
 																</span>
 															</div>
 
-															<!-- 若超过1个附件，通过下拉菜单展开显示 -->
 															<el-dropdown v-if="prob.attachments.length > 1" trigger="click" @click.native.stop>
 																<div class="attachment-badge more-attachment-badge" title="查看更多附件">
 																	<span>+{{ prob.attachments.length - 1 }} 个附件</span>
@@ -499,9 +474,9 @@
 																</div>
 																<el-dropdown-menu slot="dropdown" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 																	<el-dropdown-item v-for="(file, fIdx) in prob.attachments.slice(1)" :key="file.id || fIdx">
-																		<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 160px;" @click.stop="downloadFile(file)">
-																			<span style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px;" :title="file.name">
-																				<i class="el-icon-document"></i> {{ file.name }}
+																		<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 180px;" @click.stop="previewAttachment(file, prob)">
+																			<span style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px;" :title="'点击预览/编辑：' + file.name">
+																				<i class="el-icon-edit-outline"></i> {{ file.name }}
 																			</span>
 																			<i v-if="canManageShare(prob)" class="el-icon-close" style="color: #ef4444; cursor: pointer; font-size: 13px;"
 																				@click.stop="removeAttachment(prob, file, fIdx + 1)" title="移除此附件"></i>
@@ -514,12 +489,28 @@
 												</div>
 
 												<div class="solution-actions">
+													<!-- 编辑文档按钮 -->
 													<div class="action-btn" v-if="editSolutionId !== prob.id" @click.stop="startEditSolution(prob.id)">
 														<i class="el-icon-edit"></i> <span>编辑文档</span>
 													</div>
 													<div class="action-btn is-active-item" v-else @click.stop="finishEditSolution(prob)">
 														<i class="el-icon-check"></i> <span>保存修改</span>
 													</div>
+
+													<!-- SVN 拉取与提交同步按钮 -->
+													<el-dropdown trigger="click" @command="(cmd) => handleSvnCommand(cmd, prob)" @click.native.stop>
+														<div class="action-btn svn-action-btn">
+															<i class="el-icon-refresh"></i> <span>SVN同步</span> <i class="el-icon-arrow-down el-icon--right"></i>
+														</div>
+														<el-dropdown-menu slot="dropdown" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
+															<el-dropdown-item command="pull">
+																<i class="el-icon-download"></i> 拉取最新版本 (SVN Pull)
+															</el-dropdown-item>
+															<el-dropdown-item command="commit">
+																<i class="el-icon-upload2"></i> 提交版本更新 (SVN Commit)
+															</el-dropdown-item>
+														</el-dropdown-menu>
+													</el-dropdown>
 
 													<div class="copy-btn action-btn" v-if="!prob.attachments || prob.attachments.length < 10"
 														@click.stop="triggerUpload(prob.id)">
@@ -592,6 +583,220 @@
 		</div>
 
 		<!-- ================= 3. 弹窗区 ================= -->
+
+		<!-- 导出文档类型选择弹窗 -->
+		<el-dialog v-dialogDrag title="选择导出文件格式" :visible.sync="exportFormatDialogVisible" :width="smallDialogWidth" :close-on-click-modal="false" custom-class="modern-dialog">
+			<el-form label-position="top" size="small">
+				<el-form-item label="请选择您要导出的文件格式：">
+					<el-radio-group v-model="selectedExportFormat" style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
+						<el-radio label="docx" border>Word 文档 (.docx) - 转换纯文本</el-radio>
+						<el-radio label="doc" border>Word 97-2003 文档 (.doc) - 转换纯文本</el-radio>
+						<el-radio label="md" border>Markdown 源文件 (.md) - 保留语法排版</el-radio>
+					</el-radio-group>
+				</el-form-item>
+			</el-form>
+			<div slot="footer">
+				<el-button size="small" plain @click="exportFormatDialogVisible = false">取 消</el-button>
+				<el-button size="small" type="primary" class="primary-gradient-btn" icon="el-icon-download" @click="confirmExport">确 认 导 出</el-button>
+			</div>
+		</el-dialog>
+
+		<!-- SVN 前端直连 提交/拉取 认证与配置弹窗 -->
+		<el-dialog v-dialogDrag :title="(svnForm.action === 'commit' ? '前端直连提交到 SVN 仓库' : '前端直连从 SVN 仓库拉取') + (svnTargetProblem ? ' - ' + svnTargetProblem.title : '')"
+			:visible.sync="svnDialogVisible" :width="dialogWidth" :close-on-click-modal="false" custom-class="modern-dialog">
+			<el-form :model="svnForm" ref="svnFormRef" :rules="svnRules" size="small" label-position="top">
+				<el-form-item label="SVN 项目文件 HTTP/HTTPS 地址 (Repository URL)" prop="repoUrl">
+					<el-input v-model="svnForm.repoUrl" placeholder="例如: http://192.168.1.100/svn/repo/trouble.txt 或 https://..."></el-input>
+				</el-form-item>
+				
+				<el-row :gutter="16">
+					<el-col :span="12">
+						<el-form-item label="SVN 用户名 (Username)" prop="username">
+							<el-input v-model="svnForm.username" placeholder="请输入 SVN 登录账号"></el-input>
+						</el-form-item>
+					</el-col>
+					<el-col :span="12">
+						<el-form-item label="SVN 密码 (Password)" prop="password">
+							<el-input v-model="svnForm.password" type="password" show-password placeholder="请输入 SVN 登录密码"></el-input>
+						</el-form-item>
+					</el-col>
+				</el-row>
+
+				<el-form-item label="提交日志备注 (Commit Message)" prop="commitMsg" v-if="svnForm.action === 'commit'">
+					<el-input type="textarea" :rows="3" v-model="svnForm.commitMsg" placeholder="例如: 修复了 Nginx 502 Bad Gateway 排错流程..."></el-input>
+				</el-form-item>
+
+				<div class="share-summary-bar" style="margin-top: 10px;">
+					<i class="el-icon-info"></i>
+					<span>{{ svnForm.action === 'commit' ? '前端将通过 WebDAV PUT 请求将当前排错文档直接写入远端 SVN 服务器。' : '前端将通过 HTTP GET 请求读取远端 SVN 文件文本并覆盖当前编辑区。' }}</span>
+				</div>
+			</el-form>
+			<div slot="footer">
+				<el-button @click="svnDialogVisible = false" size="small" plain :disabled="svnSubmitting">取 消</el-button>
+				<el-button type="primary" size="small" class="primary-gradient-btn" :loading="svnSubmitting" @click="submitSvnAction">
+					{{ svnForm.action === 'commit' ? '前 端 直 连 提 交' : '前 端 直 连 拉 取' }}
+				</el-button>
+			</div>
+		</el-dialog>
+
+		<!-- 附件文件在线预览与可编辑保存弹窗 -->
+		<el-dialog 
+			v-dialogDrag 
+			:title="(isEditMode ? '在线编辑模式 - ' : '文件原生预览 - ') + (previewFile ? previewFile.name : '')"
+			:visible.sync="previewDialogVisible" 
+			:width="isMobile ? '95%' : '880px'" 
+			:close-on-click-modal="false" 
+			custom-class="modern-dialog preview-modal"
+			@closed="resetPreview"
+		>
+			<div class="dialog-top-toolbar" v-if="canManageShare(currentProblemOfPreview)">
+				<span class="mode-tip">
+					<i :class="isEditMode ? 'el-icon-edit' : 'el-icon-view'"></i>
+					{{ isEditMode ? '当前正处于可编辑模式（注：保存后动态目录将转为静态排版文本）' : '当前为极速只读预览模式' }}
+				</span>
+				<el-switch
+					v-if="['office_excel', 'office_word', 'text'].includes(previewFileType)"
+					v-model="isEditMode"
+					active-text="编辑模式"
+					inactive-text="预览模式"
+					active-color="#0ea5e9"
+					@change="handleToggleEditMode">
+				</el-switch>
+			</div>
+
+			<!-- Word 内嵌解压附件栏 (若检测到嵌入文件则显示) -->
+			<div v-if="wordEmbeddedFiles && wordEmbeddedFiles.length > 0" class="word-embeddings-bar" style="margin-bottom: 12px; padding: 10px 14px; background: rgba(14, 165, 233, 0.08); border: 1px dashed #0ea5e9; border-radius: 8px;">
+				<div style="font-size: 13px; font-weight: 600; color: var(--primary-blue); display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+					<i class="el-icon-paperclip"></i>
+					<span>检测到 Word 文档内置嵌入了 {{ wordEmbeddedFiles.length }} 个附件文件：</span>
+				</div>
+				<div style="display: flex; flex-wrap: wrap; gap: 8px;">
+					<el-button 
+						v-for="(emb, eIdx) in wordEmbeddedFiles" 
+						:key="'emb-' + eIdx" 
+						size="mini" 
+						type="primary" 
+						plain 
+						icon="el-icon-download"
+						@click="downloadBlob(emb.blob, emb.name)">
+						{{ emb.name }} ({{ emb.size }})
+					</el-button>
+				</div>
+			</div>
+
+			<div class="file-preview-body" v-loading="previewLoading" element-loading-text="正在解析加载文件与扫描内嵌附件，请稍候...">
+				
+				<!-- 1. Excel 在线编辑/预览 -->
+				<div v-if="previewFileType === 'office_excel'" class="preview-excel-container">
+					<div v-if="isEditMode">
+						<div class="excel-toolbar">
+							<el-button size="mini" type="primary" icon="el-icon-plus" @click="addExcelRow">添加新表格行</el-button>
+							<span class="toolbar-hint">双击或点击单元格直接修改值（保存后将平滑转存为标准 .xlsx 格式）</span>
+						</div>
+						<div class="excel-table-scroll">
+							<table class="custom-editable-excel-table">
+								<tbody>
+									<tr v-for="(row, rIdx) in excelData" :key="'r-' + rIdx">
+										<td class="row-num-col">{{ rIdx + 1 }}</td>
+										<td v-for="(cell, cIdx) in row" :key="'c-' + rIdx + '-' + cIdx">
+											<input v-model="excelData[rIdx][cIdx]" class="cell-inline-input" />
+										</td>
+										<td class="action-col">
+											<i class="el-icon-delete delete-row-btn" title="删除整行" @click="deleteExcelRow(rIdx)"></i>
+										</td>
+									</tr>
+								</tbody>
+							</table>
+						</div>
+					</div>
+					<div v-else class="preview-iframe-container">
+						<iframe 
+							:src="'https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(previewFile.url)" 
+							width="100%" 
+							height="500px" 
+							frameborder="0">
+						</iframe>
+					</div>
+				</div>
+
+				<!-- 2. Word 在线编辑/预览（已优化：支持中文目录与层级识别） -->
+				<div v-else-if="previewFileType === 'office_word'" class="preview-word-container">
+					<div v-if="isEditMode" class="word-editor-wrapper">
+						<div class="word-toolbar">
+							<el-button-group size="mini">
+								<el-button size="mini" @click="execWordCmd('bold')" title="加粗"><b>B</b></el-button>
+								<el-button size="mini" @click="execWordCmd('italic')" title="斜体"><i>I</i></el-button>
+								<el-button size="mini" @click="execWordCmd('underline')" title="下划线"><u>U</u></el-button>
+								<el-button size="mini" @click="execWordCmd('formatBlock', '<h1>')" title="一级标题 / 目录章">H1</el-button>
+								<el-button size="mini" @click="execWordCmd('formatBlock', '<h2>')" title="二级标题 / 目录节">H2</el-button>
+								<el-button size="mini" @click="execWordCmd('formatBlock', '<h3>')" title="三级标题">H3</el-button>
+								<el-button size="mini" @click="execWordCmd('formatBlock', '<p>')" title="正文段落">正文</el-button>
+								<el-button size="mini" @click="execWordCmd('insertUnorderedList')" title="无序列表"><i class="el-icon-tickets"></i> 列表</el-button>
+							</el-button-group>
+							<span class="toolbar-hint" style="margin-left: 12px; font-size: 12px; color: var(--primary-blue);">
+								<i class="el-icon-info"></i> 已开启富文本模式，已支持中文 Word 标题 (H1-H3) 与 目录 (TOC) 格式解析
+							</span>
+						</div>
+						<div 
+							ref="wordEditableBox"
+							class="word-editable-box markdown-body" 
+							contenteditable="true" 
+							@input="onWordContentInput">
+						</div>
+					</div>
+					<div v-else class="preview-iframe-container">
+						<iframe 
+							:src="'https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(previewFile.url)" 
+							width="100%" 
+							height="500px" 
+							frameborder="0">
+						</iframe>
+					</div>
+				</div>
+
+				<!-- 3. 图片预览 -->
+				<div v-else-if="previewFileType === 'image'" class="preview-img-container">
+					<img :src="previewFile.url" :alt="previewFile.name" class="preview-img" />
+				</div>
+
+				<!-- 4. PDF 文件预览 -->
+				<div v-else-if="previewFileType === 'pdf'" class="preview-iframe-container">
+					<iframe :src="previewFile.url" width="100%" height="520px" frameborder="0"></iframe>
+				</div>
+
+				<!-- 5. 纯文本 / 代码预览 -->
+				<div v-else-if="previewFileType === 'text'" class="preview-text-container">
+					<div v-if="isEditMode">
+						<el-input type="textarea" :rows="16" v-model="previewContent" class="preview-text-input"></el-input>
+					</div>
+					<div v-else>
+						<div v-if="isMarkdown(previewContent)" class="markdown-body dialog-preview-body" v-html="renderMarkdown(previewContent)"></div>
+						<pre v-else class="preview-plain-code">{{ previewContent }}</pre>
+					</div>
+				</div>
+
+				<!-- 6. 兜底未支持类型 -->
+				<div v-else class="preview-fallback-container">
+					<div class="fallback-icon"><i class="el-icon-folder-opened"></i></div>
+					<h3>该文件类型 (.{{ getFileExt(previewFile ? previewFile.name : '') }}) 暂不支持在线渲染与编辑</h3>
+					<p>您可以点击下方按钮直接下载到本地。</p>
+				</div>
+			</div>
+
+			<div slot="footer" class="preview-dialog-footer">
+				<div class="footer-left">
+					<el-button v-if="isEditMode" size="small" type="success" class="primary-gradient-btn" icon="el-icon-check" :loading="previewLoading" @click="saveOfficeFile">
+						保 存 并 覆 盖 答 案 附 件
+					</el-button>
+				</div>
+				<div class="footer-right">
+					<el-button size="small" type="primary" plain icon="el-icon-download" @click="downloadFile(previewFile)">
+						下 载 原 文 件
+					</el-button>
+					<el-button size="small" plain @click="previewDialogVisible = false">关 闭</el-button>
+				</div>
+			</div>
+		</el-dialog>
 
 		<!-- 指定用户共享设置弹窗 -->
 		<el-dialog v-dialogDrag :title="'指定共享用户 - ' + (shareTargetType === 'category' ? '分类目录【' + (shareTargetItem ? shareTargetItem.name : '') + '】' : '文档【' + (shareTargetItem ? shareTargetItem.title : '') + '】')"
@@ -777,9 +982,9 @@ import {
 	del_doc,
 	del_categories,
 	del_problems,
-	get_users,             // 获取系统用户列表 API
-	update_category_share, // 更新分类共享用户 API
-	update_problem_share   // 更新文档共享用户 API
+	get_users,
+	update_category_share,
+	update_problem_share
 } from '../../api';
 
 import {
@@ -804,12 +1009,10 @@ export default {
                 if (!dialogHeaderEl || !dragDom) return;
                 
                 dialogHeaderEl.style.cursor = 'move';
-
                 const sty = dragDom.currentStyle || window.getComputedStyle(dragDom, null);
 
                 dialogHeaderEl.onmousedown = (e) => {
                     e.preventDefault(); 
-                    
                     const disX = e.clientX - dialogHeaderEl.offsetLeft;
                     const disY = e.clientY - dialogHeaderEl.offsetTop;
 
@@ -916,14 +1119,50 @@ export default {
 			categories: [],
 			problems: [],
 
-			// ======== 共享设置相关数据 ========
+			// ======== 导出文件格式弹窗数据 ========
+			exportFormatDialogVisible: false,
+			exportMode: 'all',
+			exportTargetProb: null,
+			selectedExportFormat: 'docx',
+
+			// ======== SVN 直连同步弹窗数据 ========
+			svnDialogVisible: false,
+			svnSubmitting: false,
+			svnTargetProblem: null,
+			svnForm: {
+				action: 'commit',
+				repoUrl: localStorage.getItem('svn_last_repo_url') || '',
+				username: localStorage.getItem('svn_last_username') || '',
+				password: '',
+				commitMsg: ''
+			},
+			svnRules: {
+				repoUrl: [{ required: true, message: '请输入 SVN 文件 HTTP/HTTPS 地址', trigger: 'blur' }],
+				username: [{ required: true, message: '请输入 SVN 用户名', trigger: 'blur' }],
+				password: [{ required: true, message: '请输入 SVN 密码', trigger: 'blur' }],
+				commitMsg: [{ required: true, message: '请输入提交说明', trigger: 'blur' }]
+			},
+
+			// ======== 共享设置数据 ========
 			shareDialogVisible: false,
-			shareTargetType: 'category', // 'category' | 'problem'
+			shareTargetType: 'category',
 			shareTargetItem: null,
 			userList: [],
 			userListLoading: false,
 			selectedShareUserIds: [],
 			searchUserQuery: '',
+
+			// ======== 附件文件在线预览与编辑数据 ========
+			previewDialogVisible: false,
+			previewFile: null,
+			currentProblemOfPreview: null,
+			previewFileType: '', 
+			previewContent: '',
+			previewLoading: false,
+			isEditMode: false,
+			excelData: [],
+			wordContent: '',
+			wordEmbeddedFiles: [], // 新增：保存 Word 文档内置提取出的附件对象
 
 			categoryForm: { name: '' },
 			categoryRules: { name: [{ required: true, message: '请输入分类名称', trigger: 'blur' }] },
@@ -939,7 +1178,7 @@ export default {
 			return this.isMobile ? '92%' : '700px';
 		},
 		smallDialogWidth() {
-			return this.isMobile ? '90%' : '400px';
+			return this.isMobile ? '90%' : '440px';
 		},
 
 		canAddProblemInCurrentCategory() {
@@ -963,9 +1202,26 @@ export default {
 		},
 
 		filteredUserList() {
-			if (!this.searchUserQuery) return this.userList;
+			const curUser = this.currentUser || {};
+			const curId = curUser.id;
+			const curUsername = (curUser.username || '').trim().toLowerCase();
+
+			let list = (this.userList || []).filter(u => {
+				if (curId && u.id && Number(u.id) === Number(curId)) {
+					return false;
+				}
+				if (curUsername && u.username && u.username.trim().toLowerCase() === curUsername) {
+					return false;
+				}
+				return true;
+			});
+
+			if (!this.searchUserQuery) {
+				return list;
+			}
+
 			const query = this.searchUserQuery.toLowerCase().trim();
-			return this.userList.filter(u => u.username && u.username.toLowerCase().includes(query));
+			return list.filter(u => u.username && u.username.toLowerCase().includes(query));
 		},
 
 		filteredCategories() {
@@ -1083,7 +1339,553 @@ export default {
 			this.updateScrollMarkers();
 		},
 
-		// ======== 获取用户列表 API (若后端暂无接口则降级为模拟用户) ========
+		// ======== SVN 前端直连同步逻辑 ========
+		encodeBase64(str) {
+			try {
+				return window.btoa(unescape(encodeURIComponent(str)));
+			} catch (e) {
+				return window.btoa(str);
+			}
+		},
+
+		handleSvnCommand(cmd, prob) {
+			this.svnTargetProblem = prob;
+			this.svnForm.action = cmd;
+			this.svnForm.commitMsg = cmd === 'commit' ? `同步更新文档: ${prob.title}` : '';
+			this.svnDialogVisible = true;
+			this.$nextTick(() => {
+				this.$refs.svnFormRef && this.$refs.svnFormRef.clearValidate();
+			});
+		},
+
+		async submitSvnAction() {
+			this.$refs.svnFormRef.validate(async valid => {
+				if (!valid || !this.svnTargetProblem) return;
+
+				this.svnSubmitting = true;
+				const { action, repoUrl, username, password, commitMsg } = this.svnForm;
+				let rawUrl = repoUrl.trim();
+
+				localStorage.setItem('svn_last_repo_url', rawUrl);
+				localStorage.setItem('svn_last_username', username);
+
+				try {
+					if (action === 'commit') {
+						const plainText = this.convertMarkdownToPlainText(this.svnTargetProblem.solution);
+
+						const response = await fetch('/api/svn-commit-docx', {
+							method: 'POST',
+							headers: {
+								'Content-Type': 'application/json'
+							},
+							body: JSON.stringify({
+								repoUrl: rawUrl,
+								username: username,
+								password: password,
+								title: this.svnTargetProblem.title,
+								solution: plainText,
+								commitMsg: commitMsg || '提交排错文档 .docx'
+							})
+						});
+
+						const res = await response.json();
+
+						if (res && res.code === 1000) {
+							Message.success(`文档【${this.svnTargetProblem.title}.docx】已成功提交至 VisualSVN 仓库！`);
+							this.svnDialogVisible = false;
+						} else {
+							Message.error(res.msg || 'SVN 提交失败，请检查命令行或权限');
+						}
+					} else if (action === 'pull') {
+						Message.info('拉取模式已准备就绪');
+					}
+				} catch (err) {
+					console.error('SVN action error:', err);
+					Message.error('提交请求失败：' + (err.message || '网络连接超时'));
+				} finally {
+					this.svnSubmitting = false;
+				}
+			});
+		},
+
+		// ======== 导出文件格式选择与处理逻辑 ========
+		openExportFormatDialog(mode, prob = null) {
+			if (this.$refs.exportPopover) {
+				this.$refs.exportPopover.doClose();
+			}
+			this.exportMode = mode;
+			this.exportTargetProb = prob;
+			this.exportFormatDialogVisible = true;
+		},
+
+		confirmExport() {
+			let targetProblems = [];
+			if (this.exportMode === 'all') {
+				targetProblems = this.currentProblems;
+			} else if (this.exportMode === 'selected') {
+				targetProblems = this.problems.filter(p => this.selectedProblemIds.includes(p.id));
+			} else if (this.exportMode === 'single' && this.exportTargetProb) {
+				targetProblems = [this.exportTargetProb];
+			}
+
+			if (targetProblems.length === 0) {
+				Message.info('没有可导出的记录');
+				this.exportFormatDialogVisible = false;
+				return;
+			}
+
+			let fileName = `${this.currentCategoryName}_排错手册`;
+			if (this.exportMode === 'selected') {
+				fileName = '自定义选择_组合排错手册';
+			} else if (this.exportMode === 'single' && this.exportTargetProb) {
+				fileName = this.exportTargetProb.title;
+			}
+
+			this.processDocumentExport(targetProblems, fileName, this.selectedExportFormat);
+			this.exportFormatDialogVisible = false;
+
+			if (this.exportMode === 'selected') {
+				this.isBatchMode = false;
+				this.selectedProblemIds = [];
+			}
+		},
+
+		processDocumentExport(targetProblems, fileName, format) {
+			if (format === 'md') {
+				let mdContent = `# 故障排错手册 - TroubleDocs\n\n`;
+				mdContent += `> 自动生成时间：${new Date().toLocaleString()}\n> 共计收录 ${targetProblems.length} 条记录\n\n---\n\n`;
+
+				targetProblems.forEach((prob, idx) => {
+					const catName = this.getCategoryName(prob.categoryId);
+					const creatorName = prob.creator ? prob.creator.username : '未知';
+					const updaterName = prob.updatedBy ? prob.updatedBy.username : creatorName;
+					mdContent += `## ${idx + 1}. [${catName}] ${prob.title}\n`;
+					mdContent += `*创建者：${creatorName} | 最近修改：${updaterName} | 更新时间：${prob.updatedAt || getNowDate()}*\n\n`;
+					mdContent += `**排查思路与解决方案：**\n\n\`\`\`bash\n${prob.solution}\n\`\`\`\n\n---\n\n`;
+				});
+
+				const blob = new Blob([mdContent], { type: 'text/markdown;charset=utf-8' });
+				this.downloadBlob(blob, `${fileName}.md`);
+			} else if (format === 'doc' || format === 'docx') {
+				let textBlocks = [];
+				targetProblems.forEach((prob, idx) => {
+					const plainText = this.convertMarkdownToPlainText(prob.solution);
+					if (targetProblems.length > 1) {
+						textBlocks.push(`【记录 ${idx + 1}】 ${prob.title}\n----------------------------------------\n${plainText}\n`);
+					} else {
+						textBlocks.push(plainText);
+					}
+				});
+
+				const combinedPlainText = textBlocks.join('\n\n========================================\n\n');
+				
+				const wordHtml = `
+					<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+					<head>
+						<meta charset='utf-8'>
+						<title>${fileName}</title>
+						<style>
+							body { font-family: Microsoft YaHei, Arial, sans-serif; font-size: 11pt; line-height: 1.6; color: #1e293b; }
+							h2 { font-size: 16pt; color: #0ea5e9; border-bottom: 1px solid #e2e8f0; padding-bottom: 4pt; }
+							pre { font-family: Consolas, Courier New, monospace; background-color: #f8fafc; padding: 10pt; border: 1px solid #e2e8f0; white-space: pre-wrap; word-wrap: break-word; }
+						</style>
+					</head>
+					<body>
+						${targetProblems.length === 1 ? `<h2>${targetProblems[0].title}</h2>` : ''}
+						<pre>${combinedPlainText}</pre>
+					</body>
+					</html>
+				`;
+
+				const mimeType = format === 'docx' 
+					? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+					: 'application/msword';
+
+				const blob = new Blob(['\ufeff' + wordHtml], { type: `${mimeType};charset=utf-8` });
+				this.downloadBlob(blob, `${fileName}.${format}`);
+			}
+			this.showToast(`文件【${fileName}.${format}】已生成并下载！`);
+		},
+
+		downloadBlob(blob, fullFilename) {
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement('a');
+			link.href = url;
+			link.download = fullFilename;
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+			URL.revokeObjectURL(url);
+		},
+
+		// ======== 动态加载外部解析引擎 ========
+		loadScript(url) {
+			return new Promise((resolve, reject) => {
+				if (document.querySelector(`script[src="${url}"]`)) {
+					resolve();
+					return;
+				}
+				const script = document.createElement('script');
+				script.src = url;
+				script.onload = resolve;
+				script.onerror = reject;
+				document.head.appendChild(script);
+			});
+		},
+
+		getFileExt(filename) {
+			if (!filename) return '';
+			const parts = filename.split('.');
+			return parts.length > 1 ? parts.pop().toLowerCase() : '';
+		},
+
+		getFileType(filename) {
+			const ext = this.getFileExt(filename);
+			if (['xlsx', 'xls'].includes(ext)) return 'office_excel';
+			if (['docx', 'doc'].includes(ext)) return 'office_word';
+			if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp'].includes(ext)) return 'image';
+			if (ext === 'pdf') return 'pdf';
+			if (['txt', 'log', 'md', 'json', 'js', 'ts', 'css', 'html', 'py', 'sh', 'xml', 'yaml', 'yml'].includes(ext)) return 'text';
+			return 'other';
+		},
+
+		async previewAttachment(file, problemContext = null) {
+			if (!file || !file.url) {
+				this.showToast('该附件暂无有效链接');
+				return;
+			}
+
+			this.previewFile = file;
+			this.currentProblemOfPreview = problemContext;
+			this.previewFileType = this.getFileType(file.name);
+			this.previewContent = '';
+			this.excelData = [];
+			this.wordContent = '';
+			this.wordEmbeddedFiles = [];
+			this.isEditMode = false;
+			this.previewDialogVisible = true;
+			this.previewLoading = false;
+
+			// 若为 Word 文件，自动扫描并提取其中的内嵌附件
+			if (this.previewFileType === 'office_word') {
+				try {
+					const resp = await fetch(file.url);
+					if (resp.ok) {
+						const ab = await resp.arrayBuffer();
+						await this.extractWordEmbeddings(ab);
+					}
+				} catch (e) {
+					console.warn('预加载Word内嵌附件失败:', e);
+				}
+			}
+		},
+
+		// ======== 新增：利用 JSZip 从 .docx 解压提取内嵌在 word/embeddings/ 下的附件文件 ========
+		async extractWordEmbeddings(arrayBuffer) {
+			this.wordEmbeddedFiles = [];
+			try {
+				await this.loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+				if (window.JSZip) {
+					const zip = await window.JSZip.loadAsync(arrayBuffer);
+					const embeddingFiles = zip.file(/^word\/embeddings\//);
+					const list = [];
+					for (const file of embeddingFiles) {
+						if (file.dir) continue;
+						let rawName = file.name.replace('word/embeddings/', '');
+						if (rawName.startsWith('oleObject')) {
+							rawName = 'Word内嵌文件_' + rawName.replace('oleObject', '').replace('.bin', '') + '.bin';
+						}
+						const blob = await file.async('blob');
+						list.push({
+							name: rawName,
+							blob: blob,
+							size: (blob.size / 1024).toFixed(1) + ' KB'
+						});
+					}
+					this.wordEmbeddedFiles = list;
+				}
+			} catch (e) {
+				console.warn('解压提取 Word 内嵌附件失败:', e);
+			}
+		},
+
+		// ======== 富文本编辑器命令工具 ========
+		execWordCmd(cmd, value = null) {
+			document.execCommand(cmd, false, value);
+			if (this.$refs.wordEditableBox) {
+				this.wordContent = this.$refs.wordEditableBox.innerHTML;
+			}
+		},
+
+		onWordContentInput(e) {
+			this.wordContent = e.target.innerHTML;
+		},
+
+		async handleToggleEditMode(val) {
+			if (!val || !this.previewFile || !this.previewFile.url) return;
+
+			this.previewLoading = true;
+			try {
+				if (this.previewFileType === 'office_excel') {
+					await this.loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
+					const resp = await fetch(this.previewFile.url);
+					if (!resp.ok) throw new Error('读取 Excel 失败');
+					const arrayBuffer = await resp.arrayBuffer();
+					const wb = window.XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+					const firstSheetName = wb.SheetNames[0];
+					const worksheet = wb.Sheets[firstSheetName];
+					const jsonData = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+
+					if (jsonData && jsonData.length > 0) {
+						let maxCols = 0;
+						jsonData.forEach(row => { if (row.length > maxCols) maxCols = row.length; });
+						this.excelData = jsonData.map(row => {
+							const newRow = row.map(v => (v === null || v === undefined) ? '' : String(v));
+							while (newRow.length < Math.max(maxCols, 3)) { newRow.push(''); }
+							return newRow;
+						});
+					} else {
+						this.excelData = [['', '', ''], ['', '', '']];
+					}
+				}
+				else if (this.previewFileType === 'office_word') {
+					const ext = this.getFileExt(this.previewFile.name);
+					if (ext === 'doc') {
+						this.showToast('.doc 老版本格式不支持在线编辑，请先转换为 .docx 格式重新上传');
+						this.isEditMode = false;
+						this.previewLoading = false;
+						return;
+					}
+
+					try {
+						await this.loadScript('https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js');
+					} catch (e) {
+						console.warn('加载 mammoth.js 脚本失败:', e);
+					}
+
+					const resp = await fetch(this.previewFile.url);
+					if (!resp.ok) throw new Error('读取 Word 失败');
+					const arrayBuffer = await resp.arrayBuffer();
+
+					// 异步解析扫描 Word 内置嵌入附件
+					await this.extractWordEmbeddings(arrayBuffer);
+
+					let htmlResult = '';
+					if (window.mammoth) {
+						try {
+							// 核心修复：完善中文 Word 标题与目录 (TOC 1~3, 目录 1~3) 的映射体系
+							const customStyleMap = [
+								"p[style-name='标题 1'] => h1:fresh",
+								"p[style-name='标题 2'] => h2:fresh",
+								"p[style-name='标题 3'] => h3:fresh",
+								"p[style-name='标题 4'] => h4:fresh",
+								"p[style-name='标题 5'] => h5:fresh",
+								"p[style-name='标题 6'] => h6:fresh",
+								"p[style-name='标题'] => h1:fresh",
+								"p[style-name='副标题'] => h4.subtitle:fresh",
+								"p[style-name='目录 1'] => p.toc-item.toc-1:fresh",
+								"p[style-name='目录 2'] => p.toc-item.toc-2:fresh",
+								"p[style-name='目录 3'] => p.toc-item.toc-3:fresh",
+								"p[style-name='TOC 1'] => p.toc-item.toc-1:fresh",
+								"p[style-name='TOC 2'] => p.toc-item.toc-2:fresh",
+								"p[style-name='TOC 3'] => p.toc-item.toc-3:fresh",
+								"p[style-name='Table of Contents'] => div.toc-wrapper:fresh",
+								"p[style-name='Heading 1'] => h1:fresh",
+								"p[style-name='Heading 2'] => h2:fresh",
+								"p[style-name='Heading 3'] => h3:fresh",
+								"p[style-name='Heading 4'] => h4:fresh",
+								"p[style-name='List Paragraph'] => li:fresh",
+								"p[style-name='引用'] => blockquote:fresh",
+								"r[style-name='Strong'] => strong",
+								"r[style-name='加粗'] => strong",
+								"r[style-name='Hyperlink'] => a"
+							];
+
+							const result = await window.mammoth.convertToHtml(
+								{ arrayBuffer: arrayBuffer },
+								{ 
+									styleMap: customStyleMap, 
+									includeDefaultStyleMap: true,
+									ignoreEmptyParagraphs: false 
+								}
+							);
+							htmlResult = result.value || '';
+						} catch (mErr) {
+							console.warn('Mammoth convertToHtml 失败:', mErr);
+							const textDecoder = new TextDecoder('utf-8');
+							htmlResult = `<p>${textDecoder.decode(arrayBuffer)}</p>`;
+						}
+					} else {
+						const textDecoder = new TextDecoder('utf-8');
+						htmlResult = `<p>${textDecoder.decode(arrayBuffer)}</p>`;
+					}
+
+					this.wordContent = htmlResult || '<p>【该 Word 文档为空或解析无内容】</p>';
+					this.$nextTick(() => {
+						if (this.$refs.wordEditableBox) {
+							this.$refs.wordEditableBox.innerHTML = this.wordContent;
+						}
+					});
+				}
+				else if (this.previewFileType === 'text') {
+					const resp = await fetch(this.previewFile.url);
+					this.previewContent = await resp.text();
+				}
+			} catch (e) {
+				console.error('handleToggleEditMode error:', e);
+				this.showToast('文件获取失败，建议下载到本地修改后重新上传覆盖');
+				this.isEditMode = false;
+			} finally {
+				this.previewLoading = false;
+			}
+		},
+
+		addExcelRow() {
+			if (this.excelData.length > 0) {
+				const colCount = this.excelData[0].length;
+				this.excelData.push(new Array(colCount).fill(''));
+			} else {
+				this.excelData.push(['', '', '']);
+			}
+		},
+
+		deleteExcelRow(rIdx) {
+			if (this.excelData.length <= 1) {
+				this.showToast('至少保留一行表格数据');
+				return;
+			}
+			this.excelData.splice(rIdx, 1);
+		},
+
+		async saveOfficeFile() {
+			if (!this.previewFile || !this.currentProblemOfPreview) {
+				this.showToast('无法定位所属记录，保存失败');
+				return;
+			}
+
+			if (!this.canManageShare(this.currentProblemOfPreview)) {
+				this.showToast('仅问题创建者允许在线保存覆盖附件');
+				return;
+			}
+
+			this.previewLoading = true;
+			try {
+				let newBlob = null;
+				let filename = this.previewFile.name;
+
+				if (this.previewFileType === 'office_excel') {
+					await this.loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
+					const ws = window.XLSX.utils.aoa_to_sheet(this.excelData);
+					const wb = window.XLSX.utils.book_new();
+					window.XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+					const wbout = window.XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+					newBlob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+					if (!filename.endsWith('.xlsx')) filename = filename.replace(/\.[^/.]+$/, "") + ".xlsx";
+				}
+				else if (this.previewFileType === 'office_word') {
+					try {
+						await this.loadScript('https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.min.js');
+					} catch (e) {
+						console.warn('加载 html-docx-js 失败:', e);
+					}
+
+					let currentHtml = this.wordContent;
+					if (this.$refs.wordEditableBox) {
+						currentHtml = this.$refs.wordEditableBox.innerHTML;
+					}
+
+					// 重新保存回 Word 时，注入带层次缩进的 CSS，保持目录层级样式
+					const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
+					<style>
+						body { font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif; font-size: 11pt; line-height: 1.6; color: #1e293b; }
+						h1 { font-size: 18pt; font-weight: bold; color: #0f172a; margin-top: 16pt; margin-bottom: 8pt; border-bottom: 1px solid #cbd5e1; padding-bottom: 4pt; }
+						h2 { font-size: 15pt; font-weight: bold; color: #0ea5e9; margin-top: 14pt; margin-bottom: 6pt; }
+						h3 { font-size: 13pt; font-weight: bold; color: #334155; margin-top: 12pt; margin-bottom: 4pt; }
+						p { margin: 6pt 0; }
+						p.toc-item { margin: 4pt 0; font-family: "Microsoft YaHei", sans-serif; }
+						p.toc-1 { font-weight: bold; margin-left: 0; color: #0f172a; }
+						p.toc-2 { margin-left: 18pt; color: #334155; }
+						p.toc-3 { margin-left: 36pt; color: #64748b; font-size: 10pt; }
+						table { border-collapse: collapse; width: 100%; margin: 12pt 0; }
+						td, th { border: 1px solid #cbd5e1; padding: 6pt 8pt; }
+						th { background-color: #f1f5f9; font-weight: bold; }
+						blockquote { border-left: 4px solid #0ea5e9; padding-left: 10pt; margin: 8pt 0; color: #64748b; }
+					</style>
+					</head><body>${currentHtml}</body></html>`;
+
+					if (window.htmlDocx) {
+						newBlob = window.htmlDocx.asBlob(fullHtml);
+						if (!filename.toLowerCase().endsWith('.docx')) {
+							filename = filename.replace(/\.[^/.]+$/, "") + ".docx";
+						}
+					} else {
+						newBlob = new Blob(['\ufeff' + fullHtml], { type: 'application/msword' });
+						if (!filename.toLowerCase().endsWith('.doc') && !filename.toLowerCase().endsWith('.docx')) {
+							filename = filename.replace(/\.[^/.]+$/, "") + ".doc";
+						}
+					}
+				}
+				else if (this.previewFileType === 'text') {
+					newBlob = new Blob([this.previewContent], { type: 'text/plain;charset=utf-8' });
+				}
+
+				if (!newBlob) return;
+
+				const newFile = new File([newBlob], filename, { type: newBlob.type });
+
+				await del_doc({ id: this.currentProblemOfPreview.id, file_id: this.previewFile.id });
+
+				const formData = new FormData();
+				formData.append('file', newFile);
+				formData.append('problem_id', this.currentProblemOfPreview.id);
+
+				const resp = await upload_doc(formData);
+				const res = resp?.data?.code !== undefined ? resp.data : resp;
+
+				if (res && (res.code === 1000 || res.url)) {
+					const fileData = (res.data && res.data.url) ? res.data : res;
+
+					const prob = this.problems.find(p => p.id === this.currentProblemOfPreview.id);
+					if (prob && prob.attachments) {
+						const idx = prob.attachments.findIndex(a => a.id === this.previewFile.id);
+						const updatedAttachment = {
+							id: fileData.id,
+							name: fileData.name || filename,
+							url: fileData.url,
+							uploader: fileData.uploader || null
+						};
+						if (idx !== -1) {
+							prob.attachments.splice(idx, 1, updatedAttachment);
+						} else {
+							prob.attachments.push(updatedAttachment);
+						}
+						this.previewFile = updatedAttachment;
+					}
+					this.showToast('文件已被成功覆盖保存！');
+					this.isEditMode = false;
+				} else {
+					this.showToast(res?.msg || '新文件覆盖保存失败');
+				}
+			} catch (e) {
+				console.error('saveOfficeFile error:', e);
+				this.showToast('在线保存文件发生异常');
+			} finally {
+				this.previewLoading = false;
+			}
+		},
+
+		resetPreview() {
+			this.previewFile = null;
+			this.currentProblemOfPreview = null;
+			this.previewFileType = '';
+			this.previewContent = '';
+			this.excelData = [];
+			this.wordContent = '';
+			this.wordEmbeddedFiles = [];
+			this.isEditMode = false;
+			this.previewLoading = false;
+		},
+
 		async fetchUserList() {
 			this.userListLoading = true;
 			try {
@@ -1091,31 +1893,28 @@ export default {
 					const resp = await get_users();
 					const res = resp?.data?.code !== undefined ? resp.data : resp;
 					if (res && (res.code === 1000 || res.code === 200)) {
-						this.userList = res.data || [];
-						return;
+						const dataObj = res.data || {};
+						const list = Array.isArray(dataObj.list) ? dataObj.list : (Array.isArray(dataObj) ? dataObj : []);
+						if (list.length > 0) {
+							this.userList = list;
+							return;
+						}
 					}
 				}
 			} catch (e) {
-				console.warn('get_users API 未就绪，自动采用前端模拟用户列表数据:', e);
+				console.warn('get_users API 请求异常:', e);
 			} finally {
 				this.userListLoading = false;
 			}
 
-			// 后端 API 异常或未定义时的备选 Mock 数据
 			if (!this.userList || this.userList.length === 0) {
 				this.userList = [
-					{ id: 101, username: '张三 (运维组)' },
-					{ id: 102, username: '李四 (架构部)' },
-					{ id: 103, username: '王五 (前端Team)' },
-					{ id: 104, username: '赵六 (后端Dev)' },
-					{ id: 105, username: '钱七 (DBA组)' },
-					{ id: 106, username: '孙八 (测试部)' },
-					{ id: 107, username: '周九 (安全组)' }
+					{ id: 1, username: 'admin' },
+					{ id: 2, username: 'zhangsan' }
 				];
 			}
 		},
 
-		// ======== 打开指定共享用户弹窗 ========
 		async openShareDialog(type, item) {
 			if (!this.canManageShare(item)) {
 				this.showToast('仅创建者有权修改共享设置');
@@ -1135,14 +1934,9 @@ export default {
 		},
 
 		handleSelectAllUsers(val) {
-			if (val) {
-				this.selectedShareUserIds = this.filteredUserList.map(u => u.id);
-			} else {
-				this.selectedShareUserIds = [];
-			}
+			this.selectedShareUserIds = val ? this.filteredUserList.map(u => u.id) : [];
 		},
 
-		// ======== 提交保存分类/文档指定共享设置 ========
 		async confirmSaveShareSettings() {
 			if (!this.shareTargetItem) return;
 
@@ -1156,13 +1950,12 @@ export default {
 					let success = false;
 					if (typeof update_category_share === 'function') {
 						const resp = await update_category_share({
-							id: targetId,
-							shared_user_ids: this.selectedShareUserIds
+							category_id: targetId,
+							target_user_ids: this.selectedShareUserIds
 						});
 						const res = resp?.data?.code !== undefined ? resp.data : resp;
 						success = (res && (res.code === 1000 || res.code === 200));
 					} else {
-						// 兼容回退旧的 update 接口
 						const resp = await create_categories({
 							id: targetId,
 							name: this.shareTargetItem.name,
@@ -1185,8 +1978,8 @@ export default {
 					let success = false;
 					if (typeof update_problem_share === 'function') {
 						const resp = await update_problem_share({
-							id: targetId,
-							shared_user_ids: this.selectedShareUserIds
+							problem_id: targetId,
+							target_user_ids: this.selectedShareUserIds
 						});
 						const res = resp?.data?.code !== undefined ? resp.data : resp;
 						success = (res && (res.code === 1000 || res.code === 200));
@@ -1263,12 +2056,10 @@ export default {
 					const solutionSplit = content.split(/\*\*排查思路与解决方案：\*\*/);
 					if (solutionSplit.length > 1) {
 						let rawSolution = solutionSplit[1];
-
 						const separatorIndex = rawSolution.search(/\n---\n|\n##\s/);
 						if (separatorIndex !== -1) {
 							rawSolution = rawSolution.substring(0, separatorIndex);
 						}
-
 						rawSolution = rawSolution.trim();
 
 						const codeBlockMatch = rawSolution.match(/^```[a-zA-Z]*\r?\n([\s\S]*?)\r?\n```$/);
@@ -1289,11 +2080,7 @@ export default {
 					}
 				}
 
-				this.importForm = {
-					title: defaultTitle,
-					solution: defaultSolution
-				};
-
+				this.importForm = { title: defaultTitle, solution: defaultSolution };
 				this.importDialogVisible = true;
 				this.$nextTick(() => {
 					this.$refs.importForm && this.$refs.importForm.clearValidate();
@@ -1302,7 +2089,7 @@ export default {
 			};
 
 			reader.onerror = () => {
-				this.showToast('文件读取失败，请检查文件格式是否为文本');
+				this.showToast('文件读取失败，请检查文件格式');
 				event.target.value = '';
 			};
 
@@ -1384,15 +2171,11 @@ export default {
 			const curUsername = curUser.username || curUser.name || curUser.sign || '';
 
 			if (curUserId !== undefined && curUserId !== null && creatorId !== undefined && creatorId !== null) {
-				if (Number(curUserId) === Number(creatorId)) {
-					return true;
-				}
+				if (Number(curUserId) === Number(creatorId)) return true;
 			}
 
 			if (curUsername && creatorUsername) {
-				if (String(curUsername).trim().toLowerCase() === String(creatorUsername).trim().toLowerCase()) {
-					return true;
-				}
+				if (String(curUsername).trim().toLowerCase() === String(creatorUsername).trim().toLowerCase()) return true;
 			}
 
 			return false;
@@ -1421,20 +2204,14 @@ export default {
 		scrollToTop() {
 			const mainContainer = this.$refs.mainScrollContainer || this.$el.querySelector('.bp-main');
 			if (mainContainer) {
-				mainContainer.scrollTo({
-					top: 0,
-					behavior: 'smooth'
-				});
+				mainContainer.scrollTo({ top: 0, behavior: 'smooth' });
 			}
 		},
 
 		scrollToBottom() {
 			const mainContainer = this.$refs.mainScrollContainer || this.$el.querySelector('.bp-main');
 			if (mainContainer) {
-				mainContainer.scrollTo({
-					top: mainContainer.scrollHeight,
-					behavior: 'smooth'
-				});
+				mainContainer.scrollTo({ top: mainContainer.scrollHeight, behavior: 'smooth' });
 			}
 		},
 
@@ -1482,7 +2259,6 @@ export default {
 				if (mainContainer && targetEl) {
 					const containerRect = mainContainer.getBoundingClientRect();
 					const targetRect = targetEl.getBoundingClientRect();
-
 					const targetScrollTop = mainContainer.scrollTop + (targetRect.top - containerRect.top) - 20;
 
 					mainContainer.scrollTo({
@@ -1524,25 +2300,15 @@ export default {
 				localStorage.removeItem('userInfo');
 				localStorage.removeItem('user');
 				Message.success('已退出系统');
-				setTimeout(() => {
-					window.location.reload();
-				}, 500);
+				setTimeout(() => { window.location.reload(); }, 500);
 			}).catch(() => {});
 		},
 
 		isMarkdown(text) {
 			if (!text || typeof text !== 'string') return false;
 			const mdPatterns = [
-				/```[\s\S]*?```/,
-				/`[^`]+`/,
-				/!\[.*?\]\(.*?\)/,
-				/\[.*?\]\(.*?\)/,
-				/^#{1,6}\s+/m,
-				/^\s*[-*+]\s+/m,
-				/^\s*\d+\.\s+/m,
-				/^\s*>\s+/m,
-				/\*\*.+?\*\*/,
-				/~~.+?~~/
+				/```[\s\S]*?```/, /`[^`]+`/, /!\[.*?\]\(.*?\)/, /\[.*?\]\(.*?\)/,
+				/^#{1,6}\s+/m, /^\s*[-*+]\s+/m, /^\s*\d+\.\s+/m, /^\s*>\s+/m, /\*\*.+?\*\*/, /~~.+?~~/
 			];
 			return mdPatterns.some(pattern => pattern.test(text));
 		},
@@ -1633,16 +2399,11 @@ export default {
 			const targetId = cat.id;
 			const newName = this.editCategoryName.trim() || '未命名分类';
 			this.editCategoryId = null;
-
 			cat.name = newName;
 
 			this.apiLoading = true;
 			try {
-				const resp = await create_categories({
-					id: targetId,
-					name: newName,
-					is_shared: cat.is_shared
-				});
+				const resp = await create_categories({ id: targetId, name: newName, is_shared: cat.is_shared });
 				const res = resp?.data?.code !== undefined ? resp.data : resp;
 				if (res && res.code === 1000) {
 					this.showToast('目录名称已同步保存至后端');
@@ -1879,15 +2640,12 @@ export default {
 			this.pageLoading = true;
 			try {
 				await this.getCategories(1);
-				
 				const savedCatId = localStorage.getItem('trouble_docs_active_cat_id');
 				const savedPage = Number(localStorage.getItem('trouble_docs_current_page')) || 1;
 
 				let targetCatId = null;
-
 				if (savedCatId !== null && savedCatId !== undefined && savedCatId !== '') {
-					const existInFiltered = this.filteredCategories.some(c => Number(c.id) === Number(savedCatId));
-					if (existInFiltered) {
+					if (this.filteredCategories.some(c => Number(c.id) === Number(savedCatId))) {
 						targetCatId = Number(savedCatId);
 					}
 				}
@@ -2057,62 +2815,6 @@ export default {
 			}
 		},
 
-		exportToMarkdown(mode) {
-			if (this.$refs.exportPopover) {
-				this.$refs.exportPopover.doClose();
-			}
-
-			let targetProblems = [];
-			if (mode === 'all') {
-				targetProblems = this.currentProblems;
-			} else if (mode === 'selected') {
-				targetProblems = this.problems.filter(p => this.selectedProblemIds.includes(p.id));
-			}
-
-			if (targetProblems.length === 0) {
-				this.showToast('没有可导出的记录');
-				return;
-			}
-
-			const fileName = mode === 'selected' ? '自定义选择_组合排错手册' : `${this.currentCategoryName}_排错手册`;
-			this.generateMarkdownAndDownload(targetProblems, fileName);
-
-			if (mode === 'selected') {
-				this.isBatchMode = false;
-				this.selectedProblemIds = [];
-			}
-		},
-
-		exportSingleProblem(prob) {
-			this.generateMarkdownAndDownload([prob], `${prob.title}_单篇排错日志`);
-		},
-
-		generateMarkdownAndDownload(targetProblems, fileName) {
-			let mdContent = `# 故障排错手册 - TroubleDocs\n\n`;
-			mdContent += `> 自动生成时间：${new Date().toLocaleString()}\n> 共计收录 ${targetProblems.length} 条记录\n\n---\n\n`;
-
-			targetProblems.forEach((prob, idx) => {
-				const catName = this.getCategoryName(prob.categoryId);
-				const creatorName = prob.creator ? prob.creator.username : '未知';
-				const updaterName = prob.updatedBy ? prob.updatedBy.username : creatorName;
-				mdContent += `## ${idx + 1}. [${catName}] ${prob.title}\n`;
-				mdContent += `*创建者：${creatorName} | 最近修改：${updaterName} | 更新时间：${prob.updatedAt || getNowDate()}*\n\n`;
-				mdContent += `**排查思路与解决方案：**\n\n\`\`\`bash\n${prob.solution}\n\`\`\`\n\n---\n\n`;
-			});
-
-			const blob = new Blob([mdContent], { type: 'text/markdown;charset=utf-8' });
-			const url = URL.createObjectURL(blob);
-			const link = document.createElement('a');
-			link.href = url;
-			link.download = `${fileName}.md`;
-			document.body.appendChild(link);
-			link.click();
-			document.body.removeChild(link);
-			URL.revokeObjectURL(url);
-
-			this.showToast('Markdown 文档生成并下载成功！');
-		},
-
 		openMoveDialog(prob) {
 			if (!this.canManageShare(prob)) {
 				this.showToast('仅文档创建者支持移动分类');
@@ -2138,10 +2840,7 @@ export default {
 				const oldCatId = this.moveTargetProblem.categoryId;
 				const newCatId = Number(this.moveToCategoryId);
 
-				const resp = await update_problems_categories({
-					pid: targetId,
-					cid: newCatId
-				});
+				const resp = await update_problems_categories({ pid: targetId, cid: newCatId });
 				const res = resp?.data?.code !== undefined ? resp.data : resp;
 
 				if (res && res.code === 1000) {
@@ -2282,14 +2981,12 @@ export default {
 					const resp = await del_categories({ id: Number(pending.id) });
 					const res = resp?.data?.code !== undefined ? resp.data : resp;
 					if (!(res && (res.code === 1000 || res.code === 200))) {
-						console.error('分类真正删除失败:', res?.msg);
 						this.showToast(res?.msg || '后台真正删除分类失败');
 					}
 				} else if (pending.type === 'problem') {
 					const resp = await del_problems({ id: Number(pending.id) });
 					const res = resp?.data?.code !== undefined ? resp.data : resp;
 					if (!(res && (res.code === 1000 || res.code === 200))) {
-						console.error('文档真正删除失败:', res?.msg);
 						this.showToast(res?.msg || '后台真正删除文档失败');
 					}
 				}
@@ -2536,6 +3233,37 @@ export default {
 </script>
 
 <style scoped>
+/* 富文本编辑器特定样式 */
+.word-toolbar {
+	display: flex;
+	align-items: center;
+	padding: 8px 12px;
+	background-color: var(--hover-sidebar);
+	border: 1px solid var(--border-color);
+	border-bottom: none;
+	border-radius: 8px 8px 0 0;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.word-editable-box {
+	min-height: 320px;
+	max-height: 480px;
+	overflow-y: auto;
+	padding: 16px 20px;
+	background-color: var(--bg-card);
+	border: 1px solid var(--border-color);
+	border-radius: 0 0 8px 8px;
+	outline: none;
+	color: var(--text-p);
+	line-height: 1.6;
+}
+
+.word-editable-box:focus {
+	border-color: var(--primary-blue);
+	box-shadow: 0 0 0 1px var(--primary-blue);
+}
+
 .bp-wrapper {
 	--bg-app: #f8fafc;
 	--bg-sidebar: #ffffff;
@@ -2599,6 +3327,203 @@ export default {
 
 ::-webkit-scrollbar-thumb:hover {
 	background: var(--text-muted);
+}
+
+.svn-action-btn {
+	background-color: rgba(14, 165, 233, 0.08);
+	color: var(--primary-blue);
+}
+
+.svn-action-btn:hover {
+	background-color: rgba(14, 165, 233, 0.18);
+}
+
+.dialog-top-toolbar {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 8px 12px;
+	margin-bottom: 12px;
+	background-color: var(--hover-sidebar);
+	border-radius: 8px;
+	border: 1px solid var(--border-color);
+}
+
+.mode-tip {
+	font-size: 13px;
+	color: var(--primary-blue);
+	font-weight: 600;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.file-preview-body {
+	min-height: 320px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	background-color: var(--bg-app);
+	border-radius: 8px;
+	padding: 12px;
+	border: 1px solid var(--border-color);
+}
+
+.preview-excel-container {
+	width: 100%;
+}
+
+.excel-toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 10px;
+}
+
+.toolbar-hint {
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.excel-table-scroll {
+	max-height: 480px;
+	overflow: auto;
+	border: 1px solid var(--border-color);
+	border-radius: 6px;
+}
+
+.custom-editable-excel-table {
+	width: 100%;
+	border-collapse: collapse;
+	background-color: var(--bg-card);
+	font-size: 13px;
+}
+
+.custom-editable-excel-table td {
+	border: 1px solid var(--border-color);
+	padding: 4px 8px;
+	min-width: 90px;
+	text-align: left;
+}
+
+.row-num-col {
+	width: 36px;
+	background-color: var(--hover-sidebar);
+	text-align: center !important;
+	color: var(--text-muted);
+	font-weight: bold;
+}
+
+.cell-inline-input {
+	width: 100%;
+	border: none;
+	outline: none;
+	background: transparent;
+	color: var(--text-p);
+	font-size: 13px;
+	padding: 2px 0;
+}
+
+.cell-inline-input:focus {
+	background-color: rgba(14, 165, 233, 0.1);
+}
+
+.action-col {
+	width: 36px;
+	text-align: center !important;
+}
+
+.delete-row-btn {
+	color: #ef4444;
+	cursor: pointer;
+	font-size: 14px;
+}
+
+.preview-word-container {
+	width: 100%;
+}
+
+.word-editor-wrapper {
+	width: 100%;
+}
+
+.preview-img-container {
+	max-height: 580px;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	overflow: auto;
+	width: 100%;
+}
+
+.preview-img {
+	max-width: 100%;
+	max-height: 560px;
+	border-radius: 8px;
+	object-fit: contain;
+	box-shadow: var(--shadow-card);
+}
+
+.preview-iframe-container {
+	width: 100%;
+	height: 520px;
+	border-radius: 6px;
+	overflow: hidden;
+	background-color: #ffffff;
+}
+
+.preview-text-container {
+	width: 100%;
+	max-height: 520px;
+	overflow-y: auto;
+	padding: 12px 16px;
+	background-color: var(--code-bg);
+	border-radius: 6px;
+}
+
+.preview-plain-code {
+	font-family: "JetBrains Mono", Consolas, monospace;
+	font-size: 13px;
+	color: var(--code-text);
+	white-space: pre-wrap;
+	word-break: break-all;
+	margin: 0;
+	line-height: 1.6;
+}
+
+.preview-fallback-container {
+	text-align: center;
+	padding: 40px 20px;
+	color: var(--text-muted);
+}
+
+.preview-fallback-container .fallback-icon {
+	font-size: 54px;
+	color: var(--primary-blue);
+	margin-bottom: 16px;
+}
+
+.preview-fallback-container h3 {
+	margin: 0 0 8px 0;
+	font-size: 16px;
+	color: var(--text-h1);
+}
+
+.preview-fallback-container p {
+	font-size: 13px;
+	margin: 0;
+}
+
+.preview-dialog-footer {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.footer-right {
+	display: flex;
+	gap: 10px;
 }
 
 .btn-tooltip-wrapper {
@@ -3725,7 +4650,6 @@ export default {
 	color: var(--primary-blue) !important;
 }
 
-/* 共享弹窗与用户勾选列表样式 */
 .share-dialog-content {
 	display: flex;
 	flex-direction: column;
@@ -3961,7 +4885,7 @@ export default {
 	box-shadow: 0 2px 8px rgba(14, 165, 233, 0.15);
 }
 
-.attachment-badge i.el-icon-document {
+.attachment-badge i.el-icon-edit-outline {
 	font-size: 14px;
 }
 
@@ -4062,28 +4986,12 @@ export default {
 	margin: 16px 0 10px 0;
 }
 
-.markdown-body ::v-deep h1 { 
-	font-size: 20px; 
-	border-bottom: 1px solid var(--border-color); 
-	padding-bottom: 6px; 
-}
-.markdown-body ::v-deep h2 { 
-	font-size: 18px; 
-	border-bottom: 1px solid var(--border-color); 
-	padding-bottom: 6px; 
-}
+.markdown-body ::v-deep h1 { font-size: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 6px; }
+.markdown-body ::v-deep h2 { font-size: 18px; border-bottom: 1px solid var(--border-color); padding-bottom: 6px; }
 .markdown-body ::v-deep h3 { font-size: 16px; }
 
-.markdown-body ::v-deep p {
-	margin: 8px 0;
-	color: var(--text-p);
-}
-
-.markdown-body ::v-deep hr {
-	border: none;
-	border-top: 1px solid var(--border-color);
-	margin: 16px 0;
-}
+.markdown-body ::v-deep p { margin: 8px 0; color: var(--text-p); }
+.markdown-body ::v-deep hr { border: none; border-top: 1px solid var(--border-color); margin: 16px 0; }
 
 .markdown-body ::v-deep code {
 	background-color: rgba(14, 165, 233, 0.12);
@@ -4128,23 +5036,9 @@ export default {
 	color: var(--text-muted);
 }
 
-.markdown-body ::v-deep table {
-	border-collapse: collapse;
-	width: 100%;
-	margin: 12px 0;
-}
-
-.markdown-body ::v-deep th,
-.markdown-body ::v-deep td {
-	border: 1px solid var(--border-color);
-	padding: 8px 12px;
-	text-align: left;
-}
-
-.markdown-body ::v-deep th {
-	background-color: var(--hover-sidebar);
-	color: var(--text-h1);
-}
+.markdown-body ::v-deep table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+.markdown-body ::v-deep th, .markdown-body ::v-deep td { border: 1px solid var(--border-color); padding: 8px 12px; text-align: left; }
+.markdown-body ::v-deep th { background-color: var(--hover-sidebar); color: var(--text-h1); }
 
 .dialog-md-preview-wrapper {
 	margin-top: 12px;
@@ -4233,12 +5127,7 @@ export default {
 	color: var(--text-muted);
 }
 
-.bp-wrapper.is-dark ::v-deep .el-pagination__jump .el-input__inner {
-	background-color: var(--bg-app);
-	border-color: var(--border-color);
-	color: var(--text-p);
-}
-
+.bp-wrapper.is-dark ::v-deep .el-pagination__jump .el-input__inner,
 .bp-wrapper.is-dark ::v-deep .el-pagination__sizes .el-input__inner {
 	background-color: var(--bg-app);
 	border-color: var(--border-color);
@@ -4355,7 +5244,7 @@ export default {
 }
 
 .bp-wrapper.is-dark ::v-deep .el-input__inner,
-.bp-wrapper.is-dark ::v-deep .el-textarea__inner {
+.bp-wrapper.is-dark ::v-dark .el-textarea__inner {
 	background-color: var(--code-bg);
 	border-color: var(--border-color);
 	color: var(--text-p);
@@ -4385,7 +5274,6 @@ export default {
 	margin-top: -2px;
 }
 
-/* 移动端侧边栏抽屉遮罩 */
 .mobile-sidebar-backdrop {
 	position: absolute;
 	top: 56px;
@@ -4397,62 +5285,24 @@ export default {
 	backdrop-filter: blur(2px);
 }
 
-/* =========================================================
-   移动端 (Mobile) 响应式适配样式
-   ========================================================= */
 @media (max-width: 768px) {
-	.bp-header {
-		padding: 0 10px;
-		height: 56px;
-	}
-	.header-left {
-		gap: 8px;
-		flex-shrink: 0;
-	}
-	.logo-text {
-		font-size: 15px;
-	}
-	.header-actions {
-		gap: 6px;
-		flex-shrink: 0;
-	}
+	.bp-header { padding: 0 10px; height: 56px; }
+	.header-left { gap: 8px; flex-shrink: 0; }
+	.logo-text { font-size: 15px; }
+	.header-actions { gap: 6px; flex-shrink: 0; }
 
-	.header-actions .btn-text {
-		display: none !important;
-	}
-	.header-actions .el-button {
-		padding: 7px 9px !important;
-	}
-	.header-actions .el-button [class*="el-icon-"] {
-		margin-right: 0 !important;
-		font-size: 14px;
-	}
-	.header-actions .divider {
-		margin: 0 2px;
-		height: 18px;
-	}
-	.theme-btn {
-		width: 32px;
-		height: 32px;
-		font-size: 16px;
-	}
-	.avatar-wrapper {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-	}
+	.header-actions .btn-text { display: none !important; }
+	.header-actions .el-button { padding: 7px 9px !important; }
+	.header-actions .el-button [class*="el-icon-"] { margin-right: 0 !important; font-size: 14px; }
+	.header-actions .divider { margin: 0 2px; height: 18px; }
+	.theme-btn { width: 32px; height: 32px; font-size: 16px; }
+	.avatar-wrapper { display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 
-	.bp-body {
-		height: calc(100vh - 56px);
-		position: relative;
-	}
+	.bp-body { height: calc(100vh - 56px); position: relative; }
 
 	.bp-sidebar {
 		position: absolute;
-		top: 0;
-		left: 0;
-		bottom: 0;
+		top: 0; left: 0; bottom: 0;
 		z-index: 100;
 		width: 260px !important;
 		box-shadow: 4px 0 16px rgba(0, 0, 0, 0.25);
@@ -4465,111 +5315,33 @@ export default {
 		opacity: 1 !important;
 	}
 
-	.main-content-container {
-		padding: 16px 12px 60px 12px;
-	}
+	.main-content-container { padding: 16px 12px 60px 12px; }
+	.scrollbar-markers-track { display: none !important; }
+	.main-header { flex-direction: column; align-items: stretch; gap: 16px; }
+	.category-title { font-size: 22px; }
+	.main-header-actions { flex-direction: column; align-items: stretch; width: 100%; }
+	.main-search { width: 100% !important; }
+	.card-deck-grid { grid-template-columns: repeat(2, 1fr) !important; }
 
-	.scrollbar-markers-track {
-		display: none !important;
-	}
+	.card-header { padding: 12px; flex-direction: column; align-items: stretch; gap: 8px; }
+	.card-header-actions { flex-direction: row; justify-content: space-between; align-items: center; width: 100%; }
 
-	.main-header {
-		flex-direction: column;
-		align-items: stretch;
-		gap: 16px;
-	}
-	.category-title {
-		font-size: 22px;
-	}
-	.main-header-actions {
-		flex-direction: column;
-		align-items: stretch;
-		width: 100%;
-	}
-	.main-search {
-		width: 100% !important;
-	}
+	.doc-meta-bar { flex-wrap: wrap; gap: 6px; padding: 8px; }
+	.meta-divider { display: none; }
+	.user-checkbox-grid { grid-template-columns: repeat(2, 1fr) !important; }
 
-	.card-deck-grid {
-		grid-template-columns: repeat(2, 1fr) !important;
-	}
+	.solution-header { flex-direction: column; align-items: stretch; gap: 10px; }
+	.solution-actions { flex-wrap: wrap; justify-content: flex-start; gap: 6px; }
+	.action-btn { padding: 4px 8px; font-size: 11px; }
 
-	.card-header {
-		padding: 12px;
-		flex-direction: column;
-		align-items: stretch;
-		gap: 8px;
-	}
-	.card-header-actions {
-		flex-direction: row;
-		justify-content: space-between;
-		align-items: center;
-		width: 100%;
-	}
+	.pagination-wrapper { justify-content: center; padding-top: 16px; }
+	.pagination-wrapper ::v-deep .el-pagination { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
+	.pagination-wrapper ::v-deep .el-pagination .el-pager li { min-width: 26px !important; height: 26px !important; line-height: 26px !important; margin: 0 2px !important; font-size: 12px !important; }
+	.pagination-wrapper ::v-deep .el-pagination button { height: 26px !important; line-height: 26px !important; min-width: 26px !important; padding: 0 4px !important; }
 
-	.doc-meta-bar {
-		flex-wrap: wrap;
-		gap: 6px;
-		padding: 8px;
-	}
-	.meta-divider {
-		display: none;
-	}
-
-	.user-checkbox-grid {
-		grid-template-columns: repeat(2, 1fr) !important;
-	}
-
-	.solution-header {
-		flex-direction: column;
-		align-items: stretch;
-		gap: 10px;
-	}
-	.solution-actions {
-		flex-wrap: wrap;
-		justify-content: flex-start;
-		gap: 6px;
-	}
-	.action-btn {
-		padding: 4px 8px;
-		font-size: 11px;
-	}
-
-	.pagination-wrapper {
-		justify-content: center;
-		padding-top: 16px;
-	}
-	.pagination-wrapper ::v-deep .el-pagination {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		gap: 4px;
-	}
-	.pagination-wrapper ::v-deep .el-pagination .el-pager li {
-		min-width: 26px !important;
-		height: 26px !important;
-		line-height: 26px !important;
-		margin: 0 2px !important;
-		font-size: 12px !important;
-	}
-	.pagination-wrapper ::v-deep .el-pagination button {
-		height: 26px !important;
-		line-height: 26px !important;
-		min-width: 26px !important;
-		padding: 0 4px !important;
-	}
-
-	.quick-scroll-widget {
-		right: 16px;
-		bottom: 20px;
-	}
-
-	.undo-toast {
-		width: 90% !important;
-		left: 5% !important;
-		margin-left: 0 !important;
-		top: 64px !important;
-	}
+	.quick-scroll-widget { right: 16px; bottom: 20px; }
+	.undo-toast { width: 90% !important; left: 5% !important; margin-left: 0 !important; top: 64px !important; }
+	.preview-iframe-container { height: 380px; }
 }
 </style>
 
@@ -4599,39 +5371,16 @@ export default {
 	align-items: center;
 }
 
-.switch-item-left i {
+.switch-item-left i, .action-item i {
 	margin-right: 10px;
 	font-size: 16px;
 }
 
-.action-item i {
-	margin-right: 10px;
-	font-size: 16px;
-}
-
-.action-item.danger {
-	color: #ef4444;
-}
-
-.action-item.danger:hover {
-	color: #f87171;
-}
-
-.action-item.is-disabled {
-	opacity: 0.4;
-	cursor: not-allowed;
-	pointer-events: none;
-}
-
-.action-item.is-active-item {
-	color: #0ea5e9;
-	background-color: rgba(14, 165, 233, 0.1);
-}
-
-.action-divider {
-	height: 1px;
-	margin: 4px 0;
-}
+.action-item.danger { color: #ef4444; }
+.action-item.danger:hover { color: #f87171; }
+.action-item.is-disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+.action-item.is-active-item { color: #0ea5e9; background-color: rgba(14, 165, 233, 0.1); }
+.action-divider { height: 1px; margin: 4px 0; }
 
 .custom-dark-popover {
 	background-color: #18181b !important;
@@ -4717,6 +5466,7 @@ export default {
 	box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1) !important;
 	border: 1px solid #e2e8f0 !important;
 }
+
 .category-filter-toggle {
 	display: flex;
 	align-items: center;
