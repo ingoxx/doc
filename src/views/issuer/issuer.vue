@@ -459,7 +459,7 @@
 													<transition name="el-fade-in-linear">
 														<div class="attachment-group-container" v-if="prob.attachments && prob.attachments.length > 0" style="display: inline-flex; align-items: center; gap: 6px;">
 															
-															<!-- 主附件（首个附件）：左键直接预览，右键在鼠标光标处弹出快捷操作菜单（预览、直接下载、提交SVN） -->
+															<!-- 主附件（首个附件） -->
 															<div 
 																class="attachment-badge" 
 																@click.stop="previewAttachment(prob.attachments[0], prob)" 
@@ -483,7 +483,6 @@
 																<el-dropdown-menu slot="dropdown" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 																	<el-dropdown-item v-for="(file, fIdx) in prob.attachments.slice(1)" :key="file.id || fIdx">
 																		
-																		<!-- 多附件列表中各个文件：同样支持左键直接预览、右键弹出下拉菜单 -->
 																		<div 
 																			style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 180px;" 
 																			@click.stop="previewAttachment(file, prob)"
@@ -538,7 +537,7 @@
 
 													<el-dropdown trigger="click" @command="(cmd) => handleCopyCommand(cmd, prob.solution)" @click.native.stop>
 														<div class="copy-btn action-btn">
-															<i class="el-icon-document-copy"></i> <span>复制</span> <i class="el-icon-arrow-down el-icon--right"></i>
+															<i class="el-icon-document-copy"></i> <span>复制全文</span> <i class="el-icon-arrow-down el-icon--right"></i>
 														</div>
 														<el-dropdown-menu slot="dropdown" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 															<el-dropdown-item command="raw">
@@ -639,8 +638,8 @@
 			</div>
 		</el-dialog>
 
-		<!-- SVN 前端直连 提交/拉取 认证与配置弹窗 -->
-		<el-dialog v-dialogDrag :title="(svnForm.action === 'commit_file' ? '前端直连提交附件文件到 SVN 仓库 - ' + (svnTargetFile ? svnTargetFile.name : '') : ((svnForm.action === 'commit' ? '前端直连提交到 SVN 仓库' : '前端直连从 SVN 仓库拉取') + (svnTargetProblem ? ' - ' + svnTargetProblem.title : '')))"
+		<!-- SVN 提交/拉取 认证与配置弹窗 -->
+		<el-dialog v-dialogDrag :title="(svnForm.action === 'commit_file' ? '提交附件文件到 SVN 仓库 - ' + (svnTargetFile ? svnTargetFile.name : '') : ((svnForm.action === 'commit' ? '提交排错文档到 SVN 仓库' : '从 SVN 仓库拉取') + (svnTargetProblem ? ' - ' + svnTargetProblem.title : '')))"
 			:visible.sync="svnDialogVisible" :width="dialogWidth" :close-on-click-modal="false" custom-class="modern-dialog">
 			<el-form :model="svnForm" ref="svnFormRef" :rules="svnRules" size="small" label-position="top">
 				<el-form-item label="SVN 项目文件 HTTP/HTTPS 地址 (Repository URL)" prop="repoUrl">
@@ -666,13 +665,13 @@
 
 				<div class="share-summary-bar" style="margin-top: 10px;">
 					<i class="el-icon-info"></i>
-					<span>{{ svnForm.action === 'commit_file' ? '前端将通过直连方式将当前选中的附件文件单独提交写入远端 SVN 服务器。' : (svnForm.action === 'commit' ? '前端将通过 WebDAV PUT 请求将当前排错文档直接写入远端 SVN 服务器。' : '前端将通过 HTTP GET 请求读取远端 SVN 文件文本并覆盖当前编辑区。') }}</span>
+					<span>{{ svnForm.action === 'commit_file' ? '前端将使用 WebDAV 协议将当前附件直接写入远端 SVN 仓库。' : (svnForm.action === 'commit' ? '前端将生成 Word(.docx) 并通过 WebDAV PUT 请求直接写入远端 SVN 仓库。' : '前端将读取远端 SVN 文件文本并覆盖当前编辑区。') }}</span>
 				</div>
 			</el-form>
 			<div slot="footer">
 				<el-button @click="svnDialogVisible = false" size="small" plain :disabled="svnSubmitting">取 消</el-button>
 				<el-button type="primary" size="small" class="primary-gradient-btn" :loading="svnSubmitting" @click="submitSvnAction">
-					{{ svnForm.action === 'commit_file' ? '前 端 直 连 提 交 附 件' : (svnForm.action === 'commit' ? '前 端 直 连 提 交' : '前 端 直 连 拉 取') }}
+					{{ svnForm.action === 'commit_file' ? '提 交 附 件 到 SVN' : (svnForm.action === 'commit' ? '提 交 文 档 到 SVN' : '拉 取 SVN 文 档') }}
 				</el-button>
 			</div>
 		</el-dialog>
@@ -702,7 +701,7 @@
 				</el-switch>
 			</div>
 
-			<!-- Word 内嵌解压附件栏 (若检测到嵌入文件则显示) -->
+			<!-- Word 内嵌解压附件栏 -->
 			<div v-if="wordEmbeddedFiles && wordEmbeddedFiles.length > 0" class="word-embeddings-bar" style="margin-bottom: 12px; padding: 10px 14px; background: rgba(14, 165, 233, 0.08); border: 1px dashed #0ea5e9; border-radius: 8px;">
 				<div style="font-size: 13px; font-weight: 600; color: var(--primary-blue); display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
 					<i class="el-icon-paperclip"></i>
@@ -1034,12 +1033,53 @@ import {
 	download_file,
 } from '../../api';
 
+import axios from 'axios'
+import baseUrl from '../../utils/baseUrl'
+
 import {
 	Message,
 	MessageBox
 } from 'element-ui';
 
-marked.setOptions({
+// 配置 marked 的自定义渲染器
+const renderer = new marked.Renderer();
+const escapeHtml = (str) => {
+	if (!str) return '';
+	return str
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#39;');
+};
+
+renderer.code = function(code, infostring) {
+	let codeText = '';
+	let lang = '';
+	if (typeof code === 'object' && code !== null) {
+		codeText = code.text || '';
+		lang = code.lang || '';
+	} else {
+		codeText = code || '';
+		lang = infostring || '';
+	}
+
+	const cleanLang = (lang || '').trim().split(/\s+/)[0];
+	const escapedCode = escapeHtml(codeText);
+
+	return `<div class="code-block-wrapper">
+		<div class="code-block-header">
+			<span class="code-lang-label">${cleanLang ? cleanLang.toUpperCase() : 'CODE'}</span>
+			<button class="code-copy-btn" type="button" title="点击复制代码块内容">
+				<i class="el-icon-document-copy"></i> 复制
+			</button>
+		</div>
+		<pre><code class="${cleanLang ? 'language-' + cleanLang : ''}">${escapedCode}</code></pre>
+	</div>`;
+};
+
+marked.use({
+	renderer,
 	gfm: true,
 	breaks: true,
 });
@@ -1372,11 +1412,13 @@ export default {
 		this.checkMobile();
 		window.addEventListener('resize', this.handleResize);
 		window.addEventListener('click', this.closeContextMenu);
+		window.addEventListener('click', this.handleCodeBlockCopy, true);
 		window.addEventListener('scroll', this.closeContextMenu, true);
 	},
 	beforeDestroy() {
 		window.removeEventListener('resize', this.handleResize);
 		window.removeEventListener('click', this.closeContextMenu);
+		window.removeEventListener('click', this.handleCodeBlockCopy, true);
 		window.removeEventListener('scroll', this.closeContextMenu, true);
 		if (this.undoTimer) clearInterval(this.undoTimer);
 		if (this.toastTimer) clearTimeout(this.toastTimer);
@@ -1390,6 +1432,36 @@ export default {
 		await this.fetchData();
 	},
 	methods: {
+		handleCodeBlockCopy(e) {
+			const copyBtn = e.target ? e.target.closest('.code-copy-btn') : null;
+			if (!copyBtn) return;
+
+			e.preventDefault();
+			e.stopPropagation();
+
+			const wrapper = copyBtn.closest('.code-block-wrapper');
+			let codeText = '';
+			if (wrapper) {
+				const codeEl = wrapper.querySelector('pre code');
+				if (codeEl) {
+					codeText = codeEl.textContent || codeEl.innerText || '';
+				}
+			}
+
+			if (codeText) {
+				this.copySolution(codeText, '代码块内容已成功复制到剪贴板');
+				const origHtml = copyBtn.innerHTML;
+				copyBtn.innerHTML = '<i class="el-icon-check"></i> 已复制';
+				copyBtn.classList.add('copied');
+				setTimeout(() => {
+					copyBtn.innerHTML = origHtml;
+					copyBtn.classList.remove('copied');
+				}, 2000);
+			} else {
+				this.showToast('无法提取代码块内容');
+			}
+		},
+
 		checkMobile() {
 			this.isMobile = window.innerWidth <= 768;
 			if (this.isMobile) {
@@ -1401,7 +1473,6 @@ export default {
 			this.updateScrollMarkers();
 		},
 
-		// ======== 精准匹配文件的 MIME Type ========
 		getMimeType(filename) {
 			const ext = this.getFileExt(filename).toLowerCase();
 			const mimeMap = {
@@ -1422,99 +1493,81 @@ export default {
 			return mimeMap[ext] || 'application/octet-stream';
 		},
 
-		// ======== 重构优化：获取附件二进制 Blob（彻底解决文件大小不一致问题） ========
+		/**
+		 * 重写：使用原生 fetch 直连后端接口：
+		 * ${baseUrl}/v1/download-file?sign=${localStorage.getItem('sign')}&uid=${localStorage.getItem('uid')}
+		 * 彻底避开 Axios 拦截器对二进制 Buffer/Blob 的破坏，保证下载与预览 100% 完整不损坏
+		 */
 		async getFileBlob(file) {
 			if (!file) return null;
 			if (file.blob && file.blob instanceof Blob && file.blob.size > 0) {
 				return file.blob;
 			}
 
-			const fileId = file.id || file.file_id;
+			const fileId = file.id || file.file_id || '';
 			const mimeType = this.getMimeType(file.name || '');
 
+			// 自动获取项目 baseUrl (兼容配置)
+			// let baseUrl = process.env.VUE_APP_BASE_API || process.env.VUE_APP_BASE_URL || window.VUE_APP_BASE_API || '';
+			// if (baseUrl.endsWith('/')) {
+			// 	baseUrl = baseUrl.slice(0, -1);
+			// }
+
+			const sign = encodeURIComponent(localStorage.getItem('sign') || '');
+			const uid = encodeURIComponent(localStorage.getItem('uid') || '');
+
+			// 1. 拼接完整的后端下载接口地址
+			let downloadUrl = `${baseUrl}/v1/download-file?sign=${sign}&uid=${uid}`;
+			if (fileId) {
+				downloadUrl += `&file_id=${encodeURIComponent(fileId)}&id=${encodeURIComponent(fileId)}`;
+			}
+			if (file.name) {
+				downloadUrl += `&name=${encodeURIComponent(file.name)}&file_name=${encodeURIComponent(file.name)}`;
+			}
+			if (file.url && typeof file.url === 'string' && !file.url.startsWith('blob:')) {
+				downloadUrl += `&file_url=${encodeURIComponent(file.url)}`;
+			}
+
 			try {
-				let resp = null;
-				if (fileId) {
-					// 核心关键：在请求参数与 Axios 配置中同时注入 responseType: 'blob'
-					// 无论接口封装函数 download_file(params, config) 如何定义，都能保证 Axios 正确接收二进制字节流
-					try {
-						resp = await download_file(
-							{ file_id: fileId, id: fileId, responseType: 'blob' },
-							{ responseType: 'blob', responseEncoding: 'binary' }
-						);
-					} catch (apiErr) {
-						console.warn('download_file API 调起失败:', apiErr);
+				// 2. 原生 fetch 发起 GET 请求（绝对不会被 Axios 拦截器转字符串）
+				const response = await fetch(downloadUrl, {
+					method: 'GET'
+				});
+
+				// 3. 如果主接口请求未成功，尝试直接请求 file.url 直连兜底
+				if (!response.ok) {
+					console.warn(`接口请求未成功 (HTTP ${response.status})，尝试直连拉取:`, file.url);
+					if (file.url && typeof file.url === 'string' && !file.url.startsWith('blob:')) {
+						const fallbackRes = await fetch(file.url);
+						if (fallbackRes.ok) {
+							const fallbackBlob = await fallbackRes.blob();
+							return fallbackBlob.slice(0, fallbackBlob.size, mimeType);
+						}
 					}
+					return null;
 				}
 
-				// 兜底策略：如果 download_file 无法获取，但存在 file.url，则使用原生的 fetch
-				if (!resp && file.url && !file.url.startsWith('blob:')) {
-					resp = await fetch(file.url);
+				// 4. 原生读取完整的原始二进制 Blob 流
+				const rawBlob = await response.blob();
+				if (!rawBlob || rawBlob.size === 0) {
+					console.warn('下载接口返回了空字节数据 (0 bytes)');
+					return null;
 				}
 
-				if (!resp) return null;
-
-				let blobData = null;
-
-				// 1. 若 Axios 响应直接是 Blob 对象
-				if (resp instanceof Blob) {
-					blobData = resp;
-				} 
-				// 2. 若 Axios 包装在 resp.data 中且为 Blob 对象
-				else if (resp.data && resp.data instanceof Blob) {
-					blobData = resp.data;
-				} 
-				// 3. 若返回的是二进制 ArrayBuffer
-				else if (resp instanceof ArrayBuffer) {
-					blobData = new Blob([resp], { type: mimeType });
-				} 
-				else if (resp.data && resp.data instanceof ArrayBuffer) {
-					blobData = new Blob([resp.data], { type: mimeType });
-				} 
-				// 4. 若为 Fetch Response 对象
-				else if (typeof resp.blob === 'function') {
-					blobData = await resp.blob();
-				} 
-				// 5. 若返回的是 JSON 对象（包含 download_url / url 字段）
-				else {
-					const rawData = resp.data !== undefined ? resp.data : resp;
-					let downloadUrl = null;
-
-					if (rawData && typeof rawData === 'object') {
-						downloadUrl = rawData.url || rawData.download_url || (rawData.data && rawData.data.url);
-					}
-
-					if (downloadUrl) {
-						const fetchRes = await fetch(downloadUrl);
-						blobData = await fetchRes.blob();
-					} else if (file.url && !file.url.startsWith('blob:')) {
-						const fetchRes = await fetch(file.url);
-						blobData = await fetchRes.blob();
-					} else if (rawData) {
-						blobData = new Blob([rawData], { type: mimeType });
-					}
-				}
-
-				// 统一校正 MIME Type
-				if (blobData && mimeType && blobData.type !== mimeType) {
-					blobData = new Blob([blobData], { type: mimeType });
-				}
-
-				return blobData;
+				// 5. 赋予正确的 MIME 类型，使用 slice 确保不破坏原始 Byte 字节数据
+				return rawBlob.slice(0, rawBlob.size, mimeType || rawBlob.type || 'application/octet-stream');
 			} catch (err) {
-				console.error('getFileBlob Error:', err);
+				console.error('getFileBlob fetch 网络请求失败:', err);
 				return null;
 			}
 		},
 
-		// ======== 判断文件类型 ========
 		isOfficeDoc(filename) {
 			if (!filename) return false;
 			const ext = this.getFileExt(filename).toLowerCase();
 			return ['doc', 'docx', 'xls', 'xlsx'].includes(ext);
 		},
 
-		// ======== 打开附件右键上下文菜单 ========
 		openAttachmentContextMenu(file, prob, event) {
 			this.contextMenuFile = file;
 			this.contextMenuProb = prob;
@@ -1544,29 +1597,28 @@ export default {
 			}
 		},
 
-		// ======== 统一下载入口 (解决文件截断不完整) ========
 		async downloadFile(attachment) {
 			if (!attachment) {
 				this.showToast('附件信息不存在');
 				return;
 			}
-			this.showToast('正从服务器获取文件，请稍候...');
+
+			this.showToast('正在获取完整文件，请稍候...');
 			try {
 				const blob = await this.getFileBlob(attachment);
 				if (!blob || blob.size === 0) {
-					this.showToast('无法从接口读取该附件的二进制文件');
+					this.showToast('获取附件文件失败，数据可能为空或无权限');
 					return;
 				}
 				const filename = attachment.name || '附件文件';
 				this.downloadBlob(blob, filename);
-				this.showToast('附件已开始下载...');
+				this.showToast('附件已成功触发下载');
 			} catch (e) {
 				console.error('downloadFile error:', e);
 				this.showToast('文件下载出现异常');
 			}
 		},
 
-		// ======== 打开提交单独附件到 SVN 的配置弹窗 ========
 		openSvnForAttachment(file, prob) {
 			this.svnTargetProblem = prob;
 			this.svnTargetFile = file;
@@ -1591,7 +1643,6 @@ export default {
 			});
 		},
 
-		// ======== SVN 提交/同步主逻辑 ========
 		async submitSvnAction() {
 			this.$refs.svnFormRef.validate(async valid => {
 				if (!valid) return;
@@ -1604,6 +1655,17 @@ export default {
 				localStorage.setItem('svn_last_username', username);
 
 				try {
+					let parentDirectoryUrl = rawUrl;
+					if (/\.[a-zA-Z0-9]+$/i.test(parentDirectoryUrl)) {
+						parentDirectoryUrl = parentDirectoryUrl.substring(0, parentDirectoryUrl.lastIndexOf('/') + 1);
+					}
+					if (!parentDirectoryUrl.endsWith('/')) {
+						parentDirectoryUrl += '/';
+					}
+
+					const authHeader = 'Basic ' + this.encodeBase64(username + ':' + password);
+
+					// 分支 1：提交附件文件
 					if (action === 'commit_file') {
 						if (!this.svnTargetFile) {
 							Message.error('无法获取附件文件信息');
@@ -1611,25 +1673,19 @@ export default {
 							return;
 						}
 
-						let parentDirectoryUrl = rawUrl;
-						if (/\.[a-zA-Z0-9]+$/i.test(parentDirectoryUrl)) {
-							parentDirectoryUrl = parentDirectoryUrl.substring(0, parentDirectoryUrl.lastIndexOf('/') + 1);
-						}
-						if (!parentDirectoryUrl.endsWith('/')) {
-							parentDirectoryUrl += '/';
-						}
+						const targetFileName = this.svnTargetFile.name;
+						const targetFileUrl = parentDirectoryUrl + encodeURIComponent(targetFileName);
 
-						const targetFileUrl = parentDirectoryUrl + this.svnTargetFile.name;
-
+						// 获取完整未破坏的二进制 Blob
 						const fileBlob = await this.getFileBlob(this.svnTargetFile);
 						if (!fileBlob) {
-							Message.error('从服务器获取文件二进制数据失败');
+							Message.error('获取文件完整数据失败');
 							this.svnSubmitting = false;
 							return;
 						}
 
+						// 步骤 1. 优先尝试前端 WebDAV PUT 直连提交到 SVN 服务器
 						try {
-							const authHeader = 'Basic ' + this.encodeBase64(username + ':' + password);
 							const svnPutResp = await fetch(targetFileUrl, {
 								method: 'PUT',
 								headers: {
@@ -1640,14 +1696,15 @@ export default {
 							});
 
 							if (svnPutResp.status >= 200 && svnPutResp.status < 300) {
-								Message.success(`附件文件【${this.svnTargetFile.name}】已成功写入 SVN 仓库！`);
+								Message.success(`附件文件【${targetFileName}】已成功直连写入 SVN 仓库！`);
 								this.svnDialogVisible = false;
 								return;
 							}
 						} catch (netErr) {
-							console.warn('WebDAV 直连受限(如自签SSL/跨域)，准备通过后端代理提交:', netErr);
+							console.warn('WebDAV 直连受限，准备尝试后端 API 提交:', netErr);
 						}
 
+						// 步骤 2. 降级尝试调后端 API
 						let fileBase64 = '';
 						try {
 							fileBase64 = await new Promise((resolve) => {
@@ -1669,22 +1726,25 @@ export default {
 								repoUrl: parentDirectoryUrl,
 								username: username,
 								password: password,
-								commitMsg: commitMsg || `提交附件文件 ${this.svnTargetFile.name}`,
-								title: this.svnTargetFile.name,
-								fileName: this.svnTargetFile.name,
-								filename: this.svnTargetFile.name,
+								commitMsg: commitMsg || `提交附件文件 ${targetFileName}`,
+								title: targetFileName,
+								fileName: targetFileName,
+								filename: targetFileName,
 								isAttachment: true,
-								fileUrl: this.svnTargetFile.url,
 								fileBase64: fileBase64,
-								solution: fileBase64 || this.svnTargetFile.url
+								solution: fileBase64
 							})
 						});
+
+						if (apiResp.status === 405 || apiResp.status === 404) {
+							throw new Error(`直连 SVN 失败(可能因跨域限制)，且当前生产环境未配置后端 /api/svn-commit-docx 代理服务 (HTTP ${apiResp.status})。请在 SVN 服务器开启 CORS 允许前端直连提交。`);
+						}
 
 						const contentType = apiResp.headers.get('content-type') || '';
 						if (contentType.includes('application/json')) {
 							const res = await apiResp.json();
 							if (res && (res.code === 1000 || res.code === 200)) {
-								Message.success(`附件文件【${this.svnTargetFile.name}】已成功提交至 SVN 仓库！`);
+								Message.success(`附件文件【${targetFileName}】已成功提交至 SVN 仓库！`);
 								this.svnDialogVisible = false;
 								return;
 							} else {
@@ -1694,17 +1754,54 @@ export default {
 							Message.error(`SVN 提交失败，请检查 SVN 仓库地址或账号权限 (HTTP ${apiResp.status})`);
 						}
 					} 
+					// 分支 2：提交排错文档正文 (.docx)
 					else if (action === 'commit') {
 						if (!this.svnTargetProblem) return;
-						const plainText = this.convertMarkdownToPlainText(this.svnTargetProblem.solution);
 
+						const safeTitle = (this.svnTargetProblem.title || '排错文档').replace(/[\/\\:*?"<>|]/g, '_');
+						const targetFileName = safeTitle.endsWith('.docx') ? safeTitle : `${safeTitle}.docx`;
+						const targetFileUrl = parentDirectoryUrl + encodeURIComponent(targetFileName);
+
+						const plainText = this.convertMarkdownToPlainText(this.svnTargetProblem.solution);
+						const wordHtml = `
+            <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word'>
+            <head><meta charset='utf-8'></head>
+            <body style="font-family: Microsoft YaHei, Arial; font-size: 11pt; line-height: 1.6;">
+              <h2>${this.svnTargetProblem.title}</h2>
+              <pre style="font-family: Consolas, monospace; background: #f8fafc; padding: 10px; white-space: pre-wrap; word-break: break-all;">${plainText}</pre>
+            </body>
+            </html>`;
+
+						const docBlob = new Blob(['\ufeff' + wordHtml], { type: 'application/msword;charset=utf-8' });
+
+						// 步骤 1. 优先尝试前端 WebDAV PUT 直连写入 SVN 仓库
+						try {
+							const svnPutResp = await fetch(targetFileUrl, {
+								method: 'PUT',
+								headers: {
+									'Authorization': authHeader,
+									'Content-Type': 'application/msword;charset=utf-8'
+								},
+								body: docBlob
+							});
+
+							if (svnPutResp.status >= 200 && svnPutResp.status < 300) {
+								Message.success(`文档【${targetFileName}】已成功直连写入 SVN 仓库！`);
+								this.svnDialogVisible = false;
+								return;
+							}
+						} catch (netErr) {
+							console.warn('WebDAV 直连提交受限，准备尝试后端 API:', netErr);
+						}
+
+						// 步骤 2. 降级尝试调后端 API
 						const response = await fetch('/api/svn-commit-docx', {
 							method: 'POST',
 							headers: {
 								'Content-Type': 'application/json'
 							},
 							body: JSON.stringify({
-								repoUrl: rawUrl,
+								repoUrl: parentDirectoryUrl,
 								username: username,
 								password: password,
 								title: this.svnTargetProblem.title,
@@ -1712,6 +1809,10 @@ export default {
 								commitMsg: commitMsg || '提交排错文档 .docx'
 							})
 						});
+
+						if (response.status === 405 || response.status === 404) {
+							throw new Error(`直连 SVN 失败(可能因跨域限制)，且当前生产环境未配置后端 /api/svn-commit-docx 代理服务 (HTTP ${response.status})。请在 SVN 服务器开启 CORS 允许前端直连提交。`);
+						}
 
 						const contentType = response.headers.get('content-type') || '';
 						let res;
@@ -1722,7 +1823,7 @@ export default {
 						}
 
 						if (res && (res.code === 1000 || res.code === 200)) {
-							Message.success(`文档【${this.svnTargetProblem.title}.docx】已成功提交至 VisualSVN 仓库！`);
+							Message.success(`文档【${targetFileName}】已成功提交至 VisualSVN 仓库！`);
 							this.svnDialogVisible = false;
 						} else {
 							Message.error(res.msg || 'SVN 提交失败，请检查命令行或权限');
@@ -1874,14 +1975,32 @@ export default {
 				this.showToast('无法下载空文件');
 				return;
 			}
+			// 兼容某些 Edge / IE 遗留浏览器 API
+			if (window.navigator && window.navigator.msSaveOrOpenBlob) {
+				window.navigator.msSaveOrOpenBlob(blob, fullFilename);
+				return;
+			}
+
 			const url = URL.createObjectURL(blob);
 			const link = document.createElement('a');
+			link.style.display = 'none';
 			link.href = url;
-			link.download = fullFilename;
+			link.setAttribute('download', fullFilename);
+			
+			if (typeof link.download === 'undefined') {
+				link.setAttribute('target', '_blank');
+			}
+
 			document.body.appendChild(link);
 			link.click();
-			document.body.removeChild(link);
-			setTimeout(() => URL.revokeObjectURL(url), 15000);
+			
+			// 延迟 5 秒释放 URL，确保浏览器将完整字节流写入磁盘
+			setTimeout(() => {
+				if (document.body.contains(link)) {
+					document.body.removeChild(link);
+				}
+				URL.revokeObjectURL(url);
+			}, 5000);
 		},
 
 		loadScript(url) {
@@ -1914,7 +2033,6 @@ export default {
 			return 'other';
 		},
 
-		// ======== 预览附件主入口 ========
 		async previewAttachment(file, problemContext = null) {
 			if (!file) {
 				this.showToast('附件信息不完整');
@@ -1932,9 +2050,10 @@ export default {
 			this.isEditMode = false;
 
 			try {
+				// 获取完整的原始 Blob 数据
 				const blob = await this.getFileBlob(file);
 				if (!blob || blob.size === 0) {
-					this.showToast('无法从接口获取附件二进制数据');
+					this.showToast('无法获取附件完整数据，请检查网络或重新登录');
 					this.previewLoading = false;
 					return;
 				}
@@ -1961,14 +2080,12 @@ export default {
 			}
 		},
 
-		// ======== Word 解析引擎 ========
 		async parseWordBlob(blob) {
 			const ext = this.getFileExt(this.previewFile ? this.previewFile.name : '');
 			const ab = await blob.arrayBuffer();
 
 			await this.extractWordEmbeddings(ab);
 
-			// 检测 HTML 格式的 Word
 			try {
 				const textDecoder = new TextDecoder('utf-8');
 				let rawText = textDecoder.decode(ab).trim();
@@ -2059,7 +2176,6 @@ export default {
 			}
 		},
 
-		// ======== docx-preview 渲染逻辑 ========
 		async tryDocxPreviewRender(ab) {
 			try {
 				await this.loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
@@ -2088,7 +2204,6 @@ export default {
 			return false;
 		},
 
-		// ======== Excel 解析 ========
 		async parseExcelBlob(blob) {
 			try {
 				await this.loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
@@ -2248,14 +2363,13 @@ export default {
 			return tempDiv.innerHTML;
 		},
 
-		// ======== 切换编辑模式 ========
 		async handleToggleEditMode(val) {
 			if (!val || !this.previewFile) return;
 
 			this.previewLoading = true;
 			try {
 				const blob = await this.getFileBlob(this.previewFile);
-				if (!blob) throw new Error('读取内存二进制数据失败');
+				if (!blob) throw new Error('获取完整 Blob 数据失败');
 
 				if (this.previewFileType === 'office_excel') {
 					if (!this.excelData || this.excelData.length === 0) {
@@ -6071,4 +6185,63 @@ export default {
 	z-index: 9999;
 	min-width: 140px;
 }
+/* Markdown 代码块专属头部与复制按钮样式 */
+.code-block-wrapper {
+	position: relative;
+	margin: 12px 0;
+	border-radius: 8px;
+	overflow: hidden;
+	background-color: #0f172a;
+	border: 1px solid #1e293b;
+}
+
+.code-block-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 6px 12px;
+	background-color: rgba(255, 255, 255, 0.05);
+	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	font-size: 12px;
+}
+
+.code-lang-label {
+	font-weight: 700;
+	color: #38bdf8;
+	letter-spacing: 0.5px;
+	font-family: monospace;
+}
+
+.code-copy-btn {
+	background: transparent;
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	color: #cbd5e1;
+	border-radius: 4px;
+	padding: 2px 8px;
+	font-size: 11px;
+	cursor: pointer;
+	transition: all 0.2s;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.code-copy-btn:hover {
+	background: rgba(14, 165, 233, 0.2);
+	color: #38bdf8;
+	border-color: #38bdf8;
+}
+
+.code-copy-btn.copied {
+	color: #10b981;
+	border-color: #10b981;
+	background: rgba(16, 185, 129, 0.15);
+}
+
+.code-block-wrapper pre {
+	margin: 0 !important;
+	border-radius: 0 !important;
+	border: none !important;
+}
+
 </style>

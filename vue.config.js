@@ -1,6 +1,11 @@
 const { defineConfig } = require('@vue/cli-service')
 module.exports = defineConfig({
-	transpileDependencies: true
+	transpileDependencies: true,
+	devServer: {
+		host: '0.0.0.0',
+		port: 8080,
+		allowedHosts: 'all'
+	}
 })
 
 const { exec } = require('child_process');
@@ -55,14 +60,13 @@ module.exports = {
 					let targetFileName = '';
 					let tempFilePath = '';
 
-					// ================= 分支 1：如果是提交附件（保持真实原文件名和二进制格式） =================
+					// ================= 分支 1：提交附件文件 =================
 					if (isAttachment || fileBase64) {
 						const rawFileName = (fileName || title || 'attachment').replace(/[\/\\:*?"<>|]/g, '_');
 						targetFileName = rawFileName;
 						tempFilePath = path.join(tempDir, targetFileName);
 
 						if (fileBase64) {
-							// 将前端传过来的 Base64 还原为真实的二进制文件 (支持 .tgz, .zip, .pdf, .png 等任何格式)
 							const base64Data = fileBase64.replace(/^data:.*?;base64,/, '');
 							const fileBuffer = Buffer.from(base64Data, 'base64');
 							fs.writeFileSync(tempFilePath, fileBuffer);
@@ -70,7 +74,7 @@ module.exports = {
 							fs.writeFileSync(tempFilePath, solution || '', 'utf8');
 						}
 					} 
-					// ================= 分支 2：原有的排错文档正文提交 (.docx) - 保持原样完全不动 =================
+					// ================= 分支 2：排错文档正文提交 (.docx) =================
 					else {
 						const safeTitle = (title || '排错文档').replace(/[\/\\:*?"<>|]/g, '_');
 						targetFileName = safeTitle.endsWith('.docx') ? safeTitle : `${safeTitle}.docx`;
@@ -89,7 +93,6 @@ module.exports = {
 					}
 
 					let cleanRepoUrl = repoUrl.trim();
-					// 如果地址结尾带有旧文件名，将其剔除只保留目录路径
 					if (/\.[a-zA-Z0-9]+$/i.test(cleanRepoUrl)) {
 						cleanRepoUrl = cleanRepoUrl.substring(0, cleanRepoUrl.lastIndexOf('/') + 1);
 					}
@@ -98,40 +101,51 @@ module.exports = {
 						? `${cleanRepoUrl}${encodeURIComponent(targetFileName)}`
 						: `${cleanRepoUrl}/${encodeURIComponent(targetFileName)}`;
 
-					const svnCmd = `svn import "${tempFilePath}" "${targetSvnUrl}" -m "${commitMsg || 'Auto Commit'}" --username "${username}" --password "${password}" --non-interactive --trust-server-cert --trust-server-cert-failures=unknown-ca,cn-mismatch,expired,not-yet-valid,other`;
-
 					console.log('\n----------------------------------------');
-					console.log('[SVN Proxy Node] 正在发起提交:');
+					console.log('[SVN Proxy Node] 正在发起提交/覆盖:');
 					console.log(`[目标路径]: ${targetSvnUrl}`);
 
-					// 使用 encoding: 'buffer' 接收原生字节流
-					exec(svnCmd, { encoding: 'buffer' }, (error, stdoutBuf, stderrBuf) => {
-						// 清理临时文件
-						if (fs.existsSync(tempFilePath)) {
-							try { fs.unlinkSync(tempFilePath); } catch (e) { }
+					const authFlags = `--username "${username}" --password "${password}" --non-interactive --trust-server-cert --trust-server-cert-failures=unknown-ca,cn-mismatch,expired,not-yet-valid,other`;
+					
+					// 核心策略：优先使用 svnmucc put 命令（自动支持新增和更新覆盖）
+					const svnMuccCmd = `svnmucc -m "${commitMsg || 'Auto Commit'}" ${authFlags} put "${tempFilePath}" "${targetSvnUrl}"`;
+
+					exec(svnMuccCmd, { encoding: 'buffer' }, (muccErr, stdoutBuf, stderrBuf) => {
+						const muccStdout = decodeGbk(stdoutBuf);
+						const muccStderr = decodeGbk(stderrBuf);
+
+						// 如果 svnmucc 执行成功，直接响应
+						if (!muccErr) {
+							if (fs.existsSync(tempFilePath)) { try { fs.unlinkSync(tempFilePath); } catch (e) { } }
+							console.log('[SVN 提交/更新成功输出]:\n', muccStdout);
+							console.log('----------------------------------------\n');
+							return res.json({ code: 1000, msg: '已成功提交/更新至 SVN 仓库！', output: muccStdout });
 						}
 
-						// 将 GBK 字节流解码为正常中文
-						const stdout = decodeGbk(stdoutBuf);
-						const stderr = decodeGbk(stderrBuf);
+						console.warn('[svnmucc 执行受限，降级使用先 delete 再 import 策略]:', muccStderr || muccErr.message);
 
-						if (error) {
-							const errorDetails = stderr || stdout || error.message || '命令行异常';
-							console.error('[SVN 报错信息如下]:\n', errorDetails);
+						// 兜底降级方案：如果不含 svnmucc，先尝试 delete 旧文件（即使文件不存在报错也会继续执行 import）
+						const svnDeleteCmd = `svn delete "${targetSvnUrl}" -m "Auto clean before update" ${authFlags}`;
+						const svnImportCmd = `svn import "${tempFilePath}" "${targetSvnUrl}" -m "${commitMsg || 'Auto Commit'}" ${authFlags}`;
 
-							if (errorDetails.includes('not recognized') || errorDetails.includes('不是内部或外部命令') || errorDetails.includes('ENOENT')) {
-								return res.status(500).json({
-									code: 500,
-									msg: '当前 Windows 电脑未识别到 svn 命令！请确保安装了 TortoiseSVN 并勾选了 Command Line Client Tools。'
-								});
-							}
+						exec(svnDeleteCmd, { encoding: 'buffer' }, () => {
+							exec(svnImportCmd, { encoding: 'buffer' }, (importErr, importStdoutBuf, importStderrBuf) => {
+								if (fs.existsSync(tempFilePath)) { try { fs.unlinkSync(tempFilePath); } catch (e) { } }
 
-							return res.status(500).json({ code: 500, msg: 'SVN 报错: ' + errorDetails });
-						}
+								const importStdout = decodeGbk(importStdoutBuf);
+								const importStderr = decodeGbk(importStderrBuf);
 
-						console.log('[SVN 提交成功输出]:\n', stdout);
-						console.log('----------------------------------------\n');
-						res.json({ code: 1000, msg: '成功提交至 SVN 仓库！', output: stdout });
+								if (importErr) {
+									const errorDetails = importStderr || importStdout || importErr.message || '命令行异常';
+									console.error('[SVN 报错信息如下]:\n', errorDetails);
+									return res.status(500).json({ code: 500, msg: 'SVN 报错: ' + errorDetails });
+								}
+
+								console.log('[SVN 提交/覆盖成功输出]:\n', importStdout);
+								console.log('----------------------------------------\n');
+								res.json({ code: 1000, msg: '已成功提交/更新至 SVN 仓库！', output: importStdout });
+							});
+						});
 					});
 
 				} catch (err) {
