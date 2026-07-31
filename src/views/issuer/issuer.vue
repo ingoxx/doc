@@ -26,7 +26,7 @@
 				<!-- 导入文档按钮 -->
 				<el-tooltip
 					:disabled="canAddProblemInCurrentCategory"
-					content="他人共享给您的分类目录暂不支持导入故障文档"
+					content="他人共享给您的分类目录暂不支持导入文档"
 					placement="bottom">
 					<span class="btn-tooltip-wrapper">
 						<el-button class="export-btn" size="small" icon="el-icon-upload2" plain
@@ -40,7 +40,7 @@
 				<!-- 录入文档按钮 -->
 				<el-tooltip
 					:disabled="canAddProblemInCurrentCategory"
-					content="他人共享给您的分类目录暂不支持录入新故障文档"
+					content="他人共享给您的分类目录暂不支持录入新文档"
 					placement="bottom">
 					<span class="btn-tooltip-wrapper">
 						<el-button class="glow-btn primary-gradient-btn" size="small" icon="el-icon-plus"
@@ -201,7 +201,7 @@
 
 							<h1 class="category-title">{{ currentCategoryName }}</h1>
 							<p class="category-subtitle">
-								共收录 {{ computedTotalProblems }} 个故障解决方案
+								共收录 {{ computedTotalProblems }} 个文档
 								<span v-if="currentCategory && currentCategory.createdAt">
 									· 创建于 {{ currentCategory.createdAt.split('T')[0] }}
 								</span>
@@ -274,7 +274,7 @@
 								<div class="deck-header">
 									<div class="deck-title">
 										<i class="el-icon-s-grid"></i>
-										<span>目录故障卡牌速查</span>
+										<span>目录文档卡牌速查</span>
 										<span class="deck-badge">{{ currentProblems.length }} 篇快查</span>
 									</div>
 									<el-button type="text" class="deck-toggle-btn" @click="showCardOverview = !showCardOverview">
@@ -313,7 +313,7 @@
 								</div>
 								<h3>{{ searchProblemQuery ? '未找到相关内容' : '此目录还是空的' }}</h3>
 								<p v-if="searchProblemQuery">请尝试更换搜索关键词或检查拼写</p>
-								<p v-else-if="canAddProblemInCurrentCategory">您可以点击右上角按钮录入第一条故障记录</p>
+								<p v-else-if="canAddProblemInCurrentCategory">您可以点击右上角按钮录入第一条文档记录</p>
 								<p v-else>当前目录为他人共享知识库，您暂无录入文档权限</p>
 							</div>
 
@@ -459,36 +459,14 @@
 													<transition name="el-fade-in-linear">
 														<div class="attachment-group-container" v-if="prob.attachments && prob.attachments.length > 0" style="display: inline-flex; align-items: center; gap: 6px;">
 															
-															<!-- 主附件：针对 .doc(x) / .xls(x) 支持右键 Popover 菜单 -->
-															<el-popover
-																v-if="isOfficeDoc(prob.attachments[0].name)"
-																placement="bottom"
-																trigger="contextmenu"
-																width="140"
-																:popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'"
+															<!-- 主附件（首个附件）：左键直接预览，右键在鼠标光标处弹出快捷操作菜单（预览、直接下载、提交SVN） -->
+															<div 
+																class="attachment-badge" 
+																@click.stop="previewAttachment(prob.attachments[0], prob)" 
+																@contextmenu.prevent.stop="openAttachmentContextMenu(prob.attachments[0], prob, $event)"
+																:title="'左键点击直接预览 / 右键操作菜单：' + prob.attachments[0].name"
 															>
-																<div class="action-menu-list">
-																	<div class="action-item" @click.stop="previewAttachment(prob.attachments[0], prob)">
-																		<i class="el-icon-view"></i> <span>预览文件</span>
-																	</div>
-																	<div class="action-divider"></div>
-																	<div class="action-item" @click.stop="downloadFile(prob.attachments[0])">
-																		<i class="el-icon-download"></i> <span>直接下载</span>
-																	</div>
-																</div>
-																<div slot="reference" class="attachment-badge" @click.stop="handleAttachmentClick(prob.attachments[0], prob)" :title="'左键预览 / 右键操作菜单：' + prob.attachments[0].name">
-																	<i class="el-icon-document"></i>
-																	<span class="file-name">{{ prob.attachments[0].name }}</span>
-																	<span v-if="canManageShare(prob)" class="remove-file-btn" @click.stop="removeAttachment(prob, prob.attachments[0], 0)"
-																		title="移除该附件">
-																		<i class="el-icon-close"></i>
-																	</span>
-																</div>
-															</el-popover>
-
-															<!-- 主附件：非 .doc(x)/.xls(x) 直接点击下载 -->
-															<div v-else class="attachment-badge" @click.stop="downloadFile(prob.attachments[0])" :title="'点击直接下载：' + prob.attachments[0].name">
-																<i class="el-icon-download"></i>
+																<i class="el-icon-document"></i>
 																<span class="file-name">{{ prob.attachments[0].name }}</span>
 																<span v-if="canManageShare(prob)" class="remove-file-btn" @click.stop="removeAttachment(prob, prob.attachments[0], 0)"
 																	title="移除该附件">
@@ -505,36 +483,14 @@
 																<el-dropdown-menu slot="dropdown" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 																	<el-dropdown-item v-for="(file, fIdx) in prob.attachments.slice(1)" :key="file.id || fIdx">
 																		
-																		<!-- 多附件列表中的 .doc(x) / .xls(x) 关联右键 Popover -->
-																		<el-popover
-																			v-if="isOfficeDoc(file.name)"
-																			placement="right"
-																			trigger="contextmenu"
-																			width="140"
-																			:popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'"
+																		<!-- 多附件列表中各个文件：同样支持左键直接预览、右键弹出下拉菜单 -->
+																		<div 
+																			style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 180px;" 
+																			@click.stop="previewAttachment(file, prob)"
+																			@contextmenu.prevent.stop="openAttachmentContextMenu(file, prob, $event)"
 																		>
-																			<div class="action-menu-list">
-																				<div class="action-item" @click.stop="previewAttachment(file, prob)">
-																					<i class="el-icon-view"></i> <span>预览文件</span>
-																				</div>
-																				<div class="action-divider"></div>
-																				<div class="action-item" @click.stop="downloadFile(file)">
-																					<i class="el-icon-download"></i> <span>直接下载</span>
-																				</div>
-																			</div>
-																			<div slot="reference" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 180px;" @click.stop="handleAttachmentClick(file, prob)">
-																				<span style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px;" :title="'左键预览 / 右键操作菜单：' + file.name">
-																					<i class="el-icon-document"></i> {{ file.name }}
-																				</span>
-																				<i v-if="canManageShare(prob)" class="el-icon-close" style="color: #ef4444; cursor: pointer; font-size: 13px;"
-																					@click.stop="removeAttachment(prob, file, fIdx + 1)" title="移除此附件"></i>
-																			</div>
-																		</el-popover>
-
-																		<!-- 多附件列表中非 .doc(x)/.xls(x) 点击直接下载 -->
-																		<div v-else style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 180px;" @click.stop="downloadFile(file)">
-																			<span style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px;" :title="'点击直接下载：' + file.name">
-																				<i class="el-icon-download"></i> {{ file.name }}
+																			<span style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px;" :title="'左键点击直接预览 / 右键操作菜单：' + file.name">
+																				<i class="el-icon-document"></i> {{ file.name }}
 																			</span>
 																			<i v-if="canManageShare(prob)" class="el-icon-close" style="color: #ef4444; cursor: pointer; font-size: 13px;"
 																				@click.stop="removeAttachment(prob, file, fIdx + 1)" title="移除此附件"></i>
@@ -643,6 +599,29 @@
 
 		<!-- ================= 3. 弹窗区 ================= -->
 
+		<!-- 全局附件右键快捷上下文菜单 Popup -->
+		<div 
+			v-show="contextMenuVisible" 
+			class="custom-context-menu-popover" 
+			:class="isDark ? 'custom-dark-popover' : 'custom-light-popover'"
+			:style="contextMenuStyle" 
+			@click.stop
+		>
+			<div class="action-menu-list">
+				<div class="action-item" @click="handleContextMenuAction('preview')">
+					<i class="el-icon-view"></i> <span>预览文件</span>
+				</div>
+				<div class="action-divider"></div>
+				<div class="action-item" @click="handleContextMenuAction('download')">
+					<i class="el-icon-download"></i> <span>直接下载</span>
+				</div>
+				<div class="action-divider"></div>
+				<div class="action-item" @click="handleContextMenuAction('svn')">
+					<i class="el-icon-upload2"></i> <span>提交到 SVN</span>
+				</div>
+			</div>
+		</div>
+
 		<!-- 导出文档类型选择弹窗 -->
 		<el-dialog v-dialogDrag title="选择导出文件格式" :visible.sync="exportFormatDialogVisible" :width="smallDialogWidth" :close-on-click-modal="false" custom-class="modern-dialog">
 			<el-form label-position="top" size="small">
@@ -661,11 +640,11 @@
 		</el-dialog>
 
 		<!-- SVN 前端直连 提交/拉取 认证与配置弹窗 -->
-		<el-dialog v-dialogDrag :title="(svnForm.action === 'commit' ? '前端直连提交到 SVN 仓库' : '前端直连从 SVN 仓库拉取') + (svnTargetProblem ? ' - ' + svnTargetProblem.title : '')"
+		<el-dialog v-dialogDrag :title="(svnForm.action === 'commit_file' ? '前端直连提交附件文件到 SVN 仓库 - ' + (svnTargetFile ? svnTargetFile.name : '') : ((svnForm.action === 'commit' ? '前端直连提交到 SVN 仓库' : '前端直连从 SVN 仓库拉取') + (svnTargetProblem ? ' - ' + svnTargetProblem.title : '')))"
 			:visible.sync="svnDialogVisible" :width="dialogWidth" :close-on-click-modal="false" custom-class="modern-dialog">
 			<el-form :model="svnForm" ref="svnFormRef" :rules="svnRules" size="small" label-position="top">
 				<el-form-item label="SVN 项目文件 HTTP/HTTPS 地址 (Repository URL)" prop="repoUrl">
-					<el-input class="modern-el-input" v-model="svnForm.repoUrl" placeholder="例如: http://192.168.1.100/svn/repo/trouble.txt 或 https://..."></el-input>
+					<el-input class="modern-el-input" v-model="svnForm.repoUrl" placeholder="例如: http://192.168.3.5/svn/ 或 https://..."></el-input>
 				</el-form-item>
 				
 				<el-row :gutter="16">
@@ -681,19 +660,19 @@
 					</el-col>
 				</el-row>
 
-				<el-form-item label="提交日志备注 (Commit Message)" prop="commitMsg" v-if="svnForm.action === 'commit'">
-					<el-input class="modern-el-input" type="textarea" :rows="3" v-model="svnForm.commitMsg" placeholder="例如: 修复了 Nginx 502 Bad Gateway 排错流程..."></el-input>
+				<el-form-item label="提交日志备注 (Commit Message)" prop="commitMsg" v-if="svnForm.action === 'commit' || svnForm.action === 'commit_file'">
+					<el-input class="modern-el-input" type="textarea" :rows="3" v-model="svnForm.commitMsg" placeholder="例如: 更新了排错附件说明或单独提交附件文件..."></el-input>
 				</el-form-item>
 
 				<div class="share-summary-bar" style="margin-top: 10px;">
 					<i class="el-icon-info"></i>
-					<span>{{ svnForm.action === 'commit' ? '前端将通过 WebDAV PUT 请求将当前排错文档直接写入远端 SVN 服务器。' : '前端将通过 HTTP GET 请求读取远端 SVN 文件文本并覆盖当前编辑区。' }}</span>
+					<span>{{ svnForm.action === 'commit_file' ? '前端将通过直连方式将当前选中的附件文件单独提交写入远端 SVN 服务器。' : (svnForm.action === 'commit' ? '前端将通过 WebDAV PUT 请求将当前排错文档直接写入远端 SVN 服务器。' : '前端将通过 HTTP GET 请求读取远端 SVN 文件文本并覆盖当前编辑区。') }}</span>
 				</div>
 			</el-form>
 			<div slot="footer">
 				<el-button @click="svnDialogVisible = false" size="small" plain :disabled="svnSubmitting">取 消</el-button>
 				<el-button type="primary" size="small" class="primary-gradient-btn" :loading="svnSubmitting" @click="submitSvnAction">
-					{{ svnForm.action === 'commit' ? '前 端 直 连 提 交' : '前 端 直 连 拉 取' }}
+					{{ svnForm.action === 'commit_file' ? '前 端 直 连 提 交 附 件' : (svnForm.action === 'commit' ? '前 端 直 连 提 交' : '前 端 直 连 拉 取') }}
 				</el-button>
 			</div>
 		</el-dialog>
@@ -768,14 +747,22 @@
 							</table>
 						</div>
 					</div>
-					<div v-else class="preview-iframe-container">
-						<iframe 
-							v-if="previewFile && previewFile.url"
-							:src="'https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(previewFile.url)" 
-							width="100%" 
-							height="500px" 
-							frameborder="0">
-						</iframe>
+					<div v-else class="excel-preview-readonly">
+						<div class="excel-table-scroll" v-if="excelData && excelData.length > 0">
+							<table class="custom-editable-excel-table readonly-table">
+								<tbody>
+									<tr v-for="(row, rIdx) in excelData" :key="'pv-r-' + rIdx">
+										<td class="row-num-col">{{ rIdx + 1 }}</td>
+										<td v-for="(cell, cIdx) in row" :key="'pv-c-' + rIdx + '-' + cIdx">
+											<span class="cell-readonly-text">{{ cell }}</span>
+										</td>
+									</tr>
+								</tbody>
+							</table>
+						</div>
+						<div v-else class="preview-fallback-container">
+							<p>未提取到有效的表格数据，您可以点击“下载原文件”在本地打开。</p>
+						</div>
 					</div>
 				</div>
 
@@ -807,14 +794,9 @@
 							@input="onWordContentInput">
 						</div>
 					</div>
-					<div v-else class="preview-iframe-container">
-						<iframe 
-							v-if="previewFile && previewFile.url && !isEditMode"
-							:src="'https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(previewFile.url)" 
-							width="100%" 
-							height="500px" 
-							frameborder="0">
-						</iframe>
+					<div v-else class="word-preview-readonly">
+						<div v-if="wordContent" class="word-view-box markdown-body dialog-preview-body" v-html="wordContent"></div>
+						<div ref="docxPreviewBox" class="docx-preview-box dialog-preview-body" v-show="!wordContent"></div>
 					</div>
 				</div>
 
@@ -892,7 +874,7 @@
 
 				<div class="share-summary-bar">
 					<i class="el-icon-info"></i>
-					<span>已选择 <strong>{{ selectedShareUserIds.length }}</strong> 位共享用户。未勾选用户将无法查看该{{ shareTargetType === 'category' ? '分类目录' : '故障文档' }}。</span>
+					<span>已选择 <strong>{{ selectedShareUserIds.length }}</strong> 位共享用户。未勾选用户将无法查看该{{ shareTargetType === 'category' ? '分类目录' : '文档' }}。</span>
 				</div>
 			</div>
 
@@ -905,7 +887,7 @@
 		</el-dialog>
 
 		<!-- 移动目录弹窗 -->
-		<el-dialog v-dialogDrag title="移动故障文档到指定目录" :visible.sync="moveDialogVisible" :width="smallDialogWidth" :close-on-click-modal="false"
+		<el-dialog v-dialogDrag title="移动文档到指定目录" :visible.sync="moveDialogVisible" :width="smallDialogWidth" :close-on-click-modal="false"
 			custom-class="modern-dialog">
 			<el-form size="small" label-position="top">
 				<el-form-item label="选择目标分类目录">
@@ -976,11 +958,11 @@
 		<el-dialog v-dialogDrag :title="'在【' + currentCategoryName + '】中录入'" :visible.sync="problemVisible" :width="dialogWidth"
 			:close-on-click-modal="false" custom-class="modern-dialog">
 			<el-form :model="problemForm" ref="problemForm" :rules="problemRules" size="small" label-position="top">
-				<el-form-item label="故障现象描述 / 标题" prop="title">
+				<el-form-item label="文档标题" prop="title">
 					<el-input class="modern-el-input" v-model="problemForm.title"
 						placeholder="请描述报错信息或现象 (例如: Nginx 502 Bad Gateway)"></el-input>
 				</el-form-item>
-				<el-form-item label="排查思路与详细解决代码 (支持粘贴代码/图片/Markdown文本)" prop="solution">
+				<el-form-item label="文档内容 (支持粘贴代码/图片/Markdown文本)" prop="solution">
 					<el-input class="modern-el-input" type="textarea" :autosize="{ minRows: 6, maxRows: 12 }" v-model="problemForm.solution"
 						placeholder="可以粘贴 Bash 命令、日志、代码块、图片URL或 Markdown 文本..."></el-input>
 				</el-form-item>
@@ -1006,10 +988,10 @@
 		<el-dialog v-dialogDrag :title="'核对并导入文档到【' + currentCategoryName + '】'" :visible.sync="importDialogVisible" :width="dialogWidth"
 			:close-on-click-modal="false" custom-class="modern-dialog">
 			<el-form :model="importForm" ref="importForm" :rules="problemRules" size="small" label-position="top">
-				<el-form-item label="故障现象描述 / 标题" prop="title">
+				<el-form-item label="文档标题" prop="title">
 					<el-input class="modern-el-input" v-model="importForm.title" placeholder="请核对或修改导入文档标题"></el-input>
 				</el-form-item>
-				<el-form-item label="排查思路与详细内容 (已自动提取文档内容，可直接编辑修改)" prop="solution">
+				<el-form-item label="文档内容 (已自动提取文档内容，可直接编辑修改)" prop="solution">
 					<el-input class="modern-el-input" type="textarea" :autosize="{ minRows: 8, maxRows: 16 }" v-model="importForm.solution"
 						placeholder="文档排查思路与代码..."></el-input>
 				</el-form-item>
@@ -1048,7 +1030,8 @@ import {
 	del_problems,
 	get_users,
 	update_category_share,
-	update_problem_share
+	update_problem_share,
+	download_file,
 } from '../../api';
 
 import {
@@ -1183,6 +1166,15 @@ export default {
 			categories: [],
 			problems: [],
 
+			// ======== 附件右键快捷菜单状态 ========
+			contextMenuVisible: false,
+			contextMenuFile: null,
+			contextMenuProb: null,
+			contextMenuStyle: {
+				top: '0px',
+				left: '0px'
+			},
+
 			// ======== 导出文件格式弹窗数据 ========
 			exportFormatDialogVisible: false,
 			exportMode: 'all',
@@ -1193,8 +1185,9 @@ export default {
 			svnDialogVisible: false,
 			svnSubmitting: false,
 			svnTargetProblem: null,
+			svnTargetFile: null, 
 			svnForm: {
-				action: 'commit',
+				action: 'commit', // commit | pull | commit_file
 				repoUrl: localStorage.getItem('svn_last_repo_url') || '',
 				username: localStorage.getItem('svn_last_username') || '',
 				password: '',
@@ -1378,15 +1371,20 @@ export default {
 	mounted() {
 		this.checkMobile();
 		window.addEventListener('resize', this.handleResize);
+		window.addEventListener('click', this.closeContextMenu);
+		window.addEventListener('scroll', this.closeContextMenu, true);
 	},
 	beforeDestroy() {
 		window.removeEventListener('resize', this.handleResize);
+		window.removeEventListener('click', this.closeContextMenu);
+		window.removeEventListener('scroll', this.closeContextMenu, true);
 		if (this.undoTimer) clearInterval(this.undoTimer);
 		if (this.toastTimer) clearTimeout(this.toastTimer);
 		if (this.highlightTimer) clearTimeout(this.highlightTimer);
 		if (this.undoData) {
 			this.commitPendingDelete();
 		}
+		this.resetPreview();
 	},
 	async created() {
 		await this.fetchData();
@@ -1403,59 +1401,200 @@ export default {
 			this.updateScrollMarkers();
 		},
 
-		// ======== 判断文件类型是否属于 .doc(x) 或 .xls(x) ========
+		// ======== 精准匹配文件的 MIME Type ========
+		getMimeType(filename) {
+			const ext = this.getFileExt(filename).toLowerCase();
+			const mimeMap = {
+				'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+				'doc': 'application/msword',
+				'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+				'xls': 'application/vnd.ms-excel',
+				'pdf': 'application/pdf',
+				'png': 'image/png',
+				'jpg': 'image/jpeg',
+				'jpeg': 'image/jpeg',
+				'gif': 'image/gif',
+				'txt': 'text/plain;charset=utf-8',
+				'zip': 'application/zip',
+				'rar': 'application/x-rar-compressed',
+				'7z': 'application/x-7z-compressed'
+			};
+			return mimeMap[ext] || 'application/octet-stream';
+		},
+
+		// ======== 重构优化：获取附件二进制 Blob（彻底解决文件大小不一致问题） ========
+		async getFileBlob(file) {
+			if (!file) return null;
+			if (file.blob && file.blob instanceof Blob && file.blob.size > 0) {
+				return file.blob;
+			}
+
+			const fileId = file.id || file.file_id;
+			const mimeType = this.getMimeType(file.name || '');
+
+			try {
+				let resp = null;
+				if (fileId) {
+					// 核心关键：在请求参数与 Axios 配置中同时注入 responseType: 'blob'
+					// 无论接口封装函数 download_file(params, config) 如何定义，都能保证 Axios 正确接收二进制字节流
+					try {
+						resp = await download_file(
+							{ file_id: fileId, id: fileId, responseType: 'blob' },
+							{ responseType: 'blob', responseEncoding: 'binary' }
+						);
+					} catch (apiErr) {
+						console.warn('download_file API 调起失败:', apiErr);
+					}
+				}
+
+				// 兜底策略：如果 download_file 无法获取，但存在 file.url，则使用原生的 fetch
+				if (!resp && file.url && !file.url.startsWith('blob:')) {
+					resp = await fetch(file.url);
+				}
+
+				if (!resp) return null;
+
+				let blobData = null;
+
+				// 1. 若 Axios 响应直接是 Blob 对象
+				if (resp instanceof Blob) {
+					blobData = resp;
+				} 
+				// 2. 若 Axios 包装在 resp.data 中且为 Blob 对象
+				else if (resp.data && resp.data instanceof Blob) {
+					blobData = resp.data;
+				} 
+				// 3. 若返回的是二进制 ArrayBuffer
+				else if (resp instanceof ArrayBuffer) {
+					blobData = new Blob([resp], { type: mimeType });
+				} 
+				else if (resp.data && resp.data instanceof ArrayBuffer) {
+					blobData = new Blob([resp.data], { type: mimeType });
+				} 
+				// 4. 若为 Fetch Response 对象
+				else if (typeof resp.blob === 'function') {
+					blobData = await resp.blob();
+				} 
+				// 5. 若返回的是 JSON 对象（包含 download_url / url 字段）
+				else {
+					const rawData = resp.data !== undefined ? resp.data : resp;
+					let downloadUrl = null;
+
+					if (rawData && typeof rawData === 'object') {
+						downloadUrl = rawData.url || rawData.download_url || (rawData.data && rawData.data.url);
+					}
+
+					if (downloadUrl) {
+						const fetchRes = await fetch(downloadUrl);
+						blobData = await fetchRes.blob();
+					} else if (file.url && !file.url.startsWith('blob:')) {
+						const fetchRes = await fetch(file.url);
+						blobData = await fetchRes.blob();
+					} else if (rawData) {
+						blobData = new Blob([rawData], { type: mimeType });
+					}
+				}
+
+				// 统一校正 MIME Type
+				if (blobData && mimeType && blobData.type !== mimeType) {
+					blobData = new Blob([blobData], { type: mimeType });
+				}
+
+				return blobData;
+			} catch (err) {
+				console.error('getFileBlob Error:', err);
+				return null;
+			}
+		},
+
+		// ======== 判断文件类型 ========
 		isOfficeDoc(filename) {
 			if (!filename) return false;
 			const ext = this.getFileExt(filename).toLowerCase();
 			return ['doc', 'docx', 'xls', 'xlsx'].includes(ext);
 		},
 
-		// ======== 附件点击逻辑处理 ========
-		handleAttachmentClick(file, prob) {
-			if (this.isOfficeDoc(file.name)) {
-				// 如果是 Office 文档，点击进行在线预览
+		// ======== 打开附件右键上下文菜单 ========
+		openAttachmentContextMenu(file, prob, event) {
+			this.contextMenuFile = file;
+			this.contextMenuProb = prob;
+			this.contextMenuStyle = {
+				top: `${event.clientY}px`,
+				left: `${event.clientX}px`
+			};
+			this.contextMenuVisible = true;
+		},
+
+		closeContextMenu() {
+			this.contextMenuVisible = false;
+		},
+
+		handleContextMenuAction(action) {
+			if (!this.contextMenuFile) return;
+			const file = this.contextMenuFile;
+			const prob = this.contextMenuProb;
+			this.closeContextMenu();
+
+			if (action === 'preview') {
 				this.previewAttachment(file, prob);
-			} else {
-				// 其他非 Office 文档类型，直接点击下载
+			} else if (action === 'download') {
 				this.downloadFile(file);
+			} else if (action === 'svn') {
+				this.openSvnForAttachment(file, prob);
 			}
 		},
 
-		// ======== 解码 Quoted-Printable 传输编码 (=3D 等) 辅助工具函数 ========
-		decodeQuotedPrintable(str) {
-			if (!str || typeof str !== 'string') return '';
-			if (!str.includes('=3D') && !/=([0-9A-F]{2})/i.test(str)) return str;
+		// ======== 统一下载入口 (解决文件截断不完整) ========
+		async downloadFile(attachment) {
+			if (!attachment) {
+				this.showToast('附件信息不存在');
+				return;
+			}
+			this.showToast('正从服务器获取文件，请稍候...');
 			try {
-				let cleaned = str.replace(/=\r?\n/g, '');
-				let percentEncoded = cleaned.replace(/=([0-9A-F]{2})/gi, '%$1');
-				return decodeURIComponent(percentEncoded);
+				const blob = await this.getFileBlob(attachment);
+				if (!blob || blob.size === 0) {
+					this.showToast('无法从接口读取该附件的二进制文件');
+					return;
+				}
+				const filename = attachment.name || '附件文件';
+				this.downloadBlob(blob, filename);
+				this.showToast('附件已开始下载...');
 			} catch (e) {
-				return str.replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
+				console.error('downloadFile error:', e);
+				this.showToast('文件下载出现异常');
 			}
 		},
 
-		// ======== SVN 前端直连同步逻辑 ========
-		encodeBase64(str) {
-			try {
-				return window.btoa(unescape(encodeURIComponent(str)));
-			} catch (e) {
-				return window.btoa(str);
-			}
-		},
-
-		handleSvnCommand(cmd, prob) {
+		// ======== 打开提交单独附件到 SVN 的配置弹窗 ========
+		openSvnForAttachment(file, prob) {
 			this.svnTargetProblem = prob;
-			this.svnForm.action = cmd;
-			this.svnForm.commitMsg = cmd === 'commit' ? `同步更新文档: ${prob.title}` : '';
+			this.svnTargetFile = file;
+			this.svnForm.action = 'commit_file';
+			this.svnForm.commitMsg = `提交附件文件: ${file.name}`;
+			
+			let baseRepoUrl = localStorage.getItem('svn_last_repo_url') || 'http://192.168.1.100/svn/repo/';
+
+			if (/\.[a-zA-Z0-9]+$/i.test(baseRepoUrl)) {
+				baseRepoUrl = baseRepoUrl.substring(0, baseRepoUrl.lastIndexOf('/') + 1);
+			}
+
+			if (!baseRepoUrl.endsWith('/')) {
+				baseRepoUrl += '/';
+			}
+
+			this.svnForm.repoUrl = baseRepoUrl;
+
 			this.svnDialogVisible = true;
 			this.$nextTick(() => {
 				this.$refs.svnFormRef && this.$refs.svnFormRef.clearValidate();
 			});
 		},
 
+		// ======== SVN 提交/同步主逻辑 ========
 		async submitSvnAction() {
 			this.$refs.svnFormRef.validate(async valid => {
-				if (!valid || !this.svnTargetProblem) return;
+				if (!valid) return;
 
 				this.svnSubmitting = true;
 				const { action, repoUrl, username, password, commitMsg } = this.svnForm;
@@ -1465,7 +1604,98 @@ export default {
 				localStorage.setItem('svn_last_username', username);
 
 				try {
-					if (action === 'commit') {
+					if (action === 'commit_file') {
+						if (!this.svnTargetFile) {
+							Message.error('无法获取附件文件信息');
+							this.svnSubmitting = false;
+							return;
+						}
+
+						let parentDirectoryUrl = rawUrl;
+						if (/\.[a-zA-Z0-9]+$/i.test(parentDirectoryUrl)) {
+							parentDirectoryUrl = parentDirectoryUrl.substring(0, parentDirectoryUrl.lastIndexOf('/') + 1);
+						}
+						if (!parentDirectoryUrl.endsWith('/')) {
+							parentDirectoryUrl += '/';
+						}
+
+						const targetFileUrl = parentDirectoryUrl + this.svnTargetFile.name;
+
+						const fileBlob = await this.getFileBlob(this.svnTargetFile);
+						if (!fileBlob) {
+							Message.error('从服务器获取文件二进制数据失败');
+							this.svnSubmitting = false;
+							return;
+						}
+
+						try {
+							const authHeader = 'Basic ' + this.encodeBase64(username + ':' + password);
+							const svnPutResp = await fetch(targetFileUrl, {
+								method: 'PUT',
+								headers: {
+									'Authorization': authHeader,
+									'Content-Type': fileBlob.type || 'application/octet-stream'
+								},
+								body: fileBlob
+							});
+
+							if (svnPutResp.status >= 200 && svnPutResp.status < 300) {
+								Message.success(`附件文件【${this.svnTargetFile.name}】已成功写入 SVN 仓库！`);
+								this.svnDialogVisible = false;
+								return;
+							}
+						} catch (netErr) {
+							console.warn('WebDAV 直连受限(如自签SSL/跨域)，准备通过后端代理提交:', netErr);
+						}
+
+						let fileBase64 = '';
+						try {
+							fileBase64 = await new Promise((resolve) => {
+								const reader = new FileReader();
+								reader.onload = (e) => resolve(e.target.result);
+								reader.onerror = () => resolve('');
+								reader.readAsDataURL(fileBlob);
+							});
+						} catch (bErr) {
+							console.warn('读取 Base64 失败:', bErr);
+						}
+
+						const apiResp = await fetch('/api/svn-commit-docx', {
+							method: 'POST',
+							headers: {
+								'Content-Type': 'application/json'
+							},
+							body: JSON.stringify({
+								repoUrl: parentDirectoryUrl,
+								username: username,
+								password: password,
+								commitMsg: commitMsg || `提交附件文件 ${this.svnTargetFile.name}`,
+								title: this.svnTargetFile.name,
+								fileName: this.svnTargetFile.name,
+								filename: this.svnTargetFile.name,
+								isAttachment: true,
+								fileUrl: this.svnTargetFile.url,
+								fileBase64: fileBase64,
+								solution: fileBase64 || this.svnTargetFile.url
+							})
+						});
+
+						const contentType = apiResp.headers.get('content-type') || '';
+						if (contentType.includes('application/json')) {
+							const res = await apiResp.json();
+							if (res && (res.code === 1000 || res.code === 200)) {
+								Message.success(`附件文件【${this.svnTargetFile.name}】已成功提交至 SVN 仓库！`);
+								this.svnDialogVisible = false;
+								return;
+							} else {
+								Message.error(res.msg || '后端 SVN 提交失败');
+							}
+						} else {
+							Message.error(`SVN 提交失败，请检查 SVN 仓库地址或账号权限 (HTTP ${apiResp.status})`);
+						}
+					} 
+					else if (action === 'commit') {
+						if (!this.svnTargetProblem) return;
 						const plainText = this.convertMarkdownToPlainText(this.svnTargetProblem.solution);
 
 						const response = await fetch('/api/svn-commit-docx', {
@@ -1483,15 +1713,22 @@ export default {
 							})
 						});
 
-						const res = await response.json();
+						const contentType = response.headers.get('content-type') || '';
+						let res;
+						if (contentType.includes('application/json')) {
+							res = await response.json();
+						} else {
+							throw new Error(`接口响应非 JSON 格式 (HTTP ${response.status})`);
+						}
 
-						if (res && res.code === 1000) {
+						if (res && (res.code === 1000 || res.code === 200)) {
 							Message.success(`文档【${this.svnTargetProblem.title}.docx】已成功提交至 VisualSVN 仓库！`);
 							this.svnDialogVisible = false;
 						} else {
 							Message.error(res.msg || 'SVN 提交失败，请检查命令行或权限');
 						}
-					} else if (action === 'pull') {
+					} 
+					else if (action === 'pull') {
 						Message.info('拉取模式已准备就绪');
 					}
 				} catch (err) {
@@ -1503,7 +1740,37 @@ export default {
 			});
 		},
 
-		// ======== 导出文件格式选择与处理逻辑 ========
+		decodeQuotedPrintable(str) {
+			if (!str || typeof str !== 'string') return '';
+			if (!str.includes('=3D') && !/=([0-9A-F]{2})/i.test(str)) return str;
+			try {
+				let cleaned = str.replace(/=\r?\n/g, '');
+				let percentEncoded = cleaned.replace(/=([0-9A-F]{2})/gi, '%$1');
+				return decodeURIComponent(percentEncoded);
+			} catch (e) {
+				return str.replace(/=\r?\n/g, '').replace(/=3D/gi, '=');
+			}
+		},
+
+		encodeBase64(str) {
+			try {
+				return window.btoa(unescape(encodeURIComponent(str)));
+			} catch (e) {
+				return window.btoa(str);
+			}
+		},
+
+		handleSvnCommand(cmd, prob) {
+			this.svnTargetProblem = prob;
+			this.svnTargetFile = null; 
+			this.svnForm.action = cmd;
+			this.svnForm.commitMsg = cmd === 'commit' ? `同步更新文档: ${prob.title}` : '';
+			this.svnDialogVisible = true;
+			this.$nextTick(() => {
+				this.$refs.svnFormRef && this.$refs.svnFormRef.clearValidate();
+			});
+		},
+
 		openExportFormatDialog(mode, prob = null) {
 			if (this.$refs.exportPopover) {
 				this.$refs.exportPopover.doClose();
@@ -1603,6 +1870,10 @@ export default {
 		},
 
 		downloadBlob(blob, fullFilename) {
+			if (!blob || blob.size === 0) {
+				this.showToast('无法下载空文件');
+				return;
+			}
 			const url = URL.createObjectURL(blob);
 			const link = document.createElement('a');
 			link.href = url;
@@ -1610,10 +1881,9 @@ export default {
 			document.body.appendChild(link);
 			link.click();
 			document.body.removeChild(link);
-			URL.revokeObjectURL(url);
+			setTimeout(() => URL.revokeObjectURL(url), 15000);
 		},
 
-		// ======== 动态加载外部解析引擎 ========
 		loadScript(url) {
 			return new Promise((resolve, reject) => {
 				if (document.querySelector(`script[src="${url}"]`)) {
@@ -1644,13 +1914,15 @@ export default {
 			return 'other';
 		},
 
+		// ======== 预览附件主入口 ========
 		async previewAttachment(file, problemContext = null) {
-			if (!file || !file.url) {
-				this.showToast('该附件暂无有效链接');
+			if (!file) {
+				this.showToast('附件信息不完整');
 				return;
 			}
 
-			this.previewFile = file;
+			this.previewLoading = true;
+			this.previewDialogVisible = true;
 			this.currentProblemOfPreview = problemContext;
 			this.previewFileType = this.getFileType(file.name);
 			this.previewContent = '';
@@ -1658,21 +1930,190 @@ export default {
 			this.wordContent = '';
 			this.wordEmbeddedFiles = [];
 			this.isEditMode = false;
-			this.previewDialogVisible = true;
-			this.previewLoading = false;
 
-			if (this.previewFileType === 'office_word') {
-				try {
-					const fileUrl = file.url + (file.url.includes('?') ? '&' : '?') + '_t=' + Date.now();
-					const resp = await fetch(fileUrl, { cache: 'no-cache' });
-					if (resp.ok) {
-						const ab = await resp.arrayBuffer();
-						await this.extractWordEmbeddings(ab);
+			try {
+				const blob = await this.getFileBlob(file);
+				if (!blob || blob.size === 0) {
+					this.showToast('无法从接口获取附件二进制数据');
+					this.previewLoading = false;
+					return;
+				}
+
+				const objectUrl = URL.createObjectURL(blob);
+				this.previewFile = {
+					...file,
+					url: objectUrl,
+					blob: blob
+				};
+
+				if (this.previewFileType === 'office_word') {
+					await this.parseWordBlob(blob);
+				} else if (this.previewFileType === 'office_excel') {
+					await this.parseExcelBlob(blob);
+				} else if (this.previewFileType === 'text') {
+					this.previewContent = await blob.text();
+				}
+			} catch (e) {
+				console.error('previewAttachment error:', e);
+				this.showToast('文件预览解析出现异常');
+			} finally {
+				this.previewLoading = false;
+			}
+		},
+
+		// ======== Word 解析引擎 ========
+		async parseWordBlob(blob) {
+			const ext = this.getFileExt(this.previewFile ? this.previewFile.name : '');
+			const ab = await blob.arrayBuffer();
+
+			await this.extractWordEmbeddings(ab);
+
+			// 检测 HTML 格式的 Word
+			try {
+				const textDecoder = new TextDecoder('utf-8');
+				let rawText = textDecoder.decode(ab).trim();
+				rawText = this.decodeQuotedPrintable(rawText);
+
+				if (
+					rawText.startsWith('<') || 
+					rawText.startsWith('\ufeff<') || 
+					rawText.toLowerCase().includes('<html') || 
+					rawText.toLowerCase().includes('<body') || 
+					rawText.toLowerCase().includes('xmlns:w=')
+				) {
+					let bodyHtml = rawText;
+					const bodyMatch = rawText.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+					if (bodyMatch && bodyMatch[1]) {
+						bodyHtml = bodyMatch[1].trim();
 					}
-				} catch (e) {
-					console.warn('预加载Word内嵌附件失败:', e);
+					this.wordContent = bodyHtml;
+					return;
+				}
+			} catch (tErr) {
+				console.warn('HTML 文本格式检测异常:', tErr);
+			}
+
+			if (ext === 'doc') {
+				this.wordContent = '<p class="fallback-tip" style="padding: 16px; color: #f59e0b; font-weight: 500;"><i class="el-icon-info"></i> .doc 属于旧版二进制格式。建议点击右下角“下载原文件”在本地打开，或转换为 .docx 格式后重新上传。</p>';
+				return;
+			}
+
+			try {
+				await this.loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+				await this.loadScript('https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js');
+			} catch (e) {
+				console.warn('加载 Mammoth 解析库失败:', e);
+			}
+
+			let htmlResult = '';
+			let xmlStyles = [];
+			try {
+				xmlStyles = await this.parseWordXmlStyles(ab);
+			} catch (e) {}
+
+			if (window.mammoth && ab && ab.byteLength > 0) {
+				try {
+					const customStyleMap = [
+						"p[alignment='center'] => p.align-center:fresh",
+						"p[alignment='right'] => p.align-right:fresh",
+						"p[alignment='justify'] => p.align-justify:fresh",
+						"p[alignment='left'] => p.align-left:fresh",
+						"p[style-name='标题 1'] => h1:fresh",
+						"p[style-name='标题 2'] => h2:fresh",
+						"p[style-name='Heading 1'] => h1:fresh",
+						"p[style-name='Heading 2'] => h2:fresh"
+					];
+					const result = await window.mammoth.convertToHtml({ arrayBuffer: ab }, { styleMap: customStyleMap, includeDefaultStyleMap: true });
+					htmlResult = result.value || '';
+				} catch (mErr) {
+					console.warn('带 StyleMap 转换失败，准备重试无配置模式:', mErr);
+					try {
+						const defaultResult = await window.mammoth.convertToHtml({ arrayBuffer: ab });
+						htmlResult = defaultResult.value || '';
+					} catch (dErr) {
+						console.warn('默认 Mammoth 转换失败:', dErr);
+					}
+				}
+
+				if (!htmlResult) {
+					try {
+						const rawTextRes = await window.mammoth.extractRawText({ arrayBuffer: ab });
+						if (rawTextRes && rawTextRes.value) {
+							htmlResult = rawTextRes.value.split('\n').filter(p => p.trim()).map(p => `<p>${p}</p>`).join('');
+						}
+					} catch (rErr) {
+						console.warn('Mammoth extractRawText 失败:', rErr);
+					}
 				}
 			}
+
+			if (htmlResult) {
+				htmlResult = this.decodeQuotedPrintable(htmlResult);
+				htmlResult = this.applyWordFormatting(htmlResult, xmlStyles);
+				this.wordContent = htmlResult;
+			} else {
+				this.wordContent = '';
+				this.$nextTick(async () => {
+					await this.tryDocxPreviewRender(ab);
+				});
+			}
+		},
+
+		// ======== docx-preview 渲染逻辑 ========
+		async tryDocxPreviewRender(ab) {
+			try {
+				await this.loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+				await this.loadScript('https://cdn.jsdelivr.net/npm/docx-preview@0.1.15/dist/docx-preview.min.js');
+
+				if (window.docx && this.$refs.docxPreviewBox) {
+					this.$refs.docxPreviewBox.innerHTML = '';
+					await window.docx.renderAsync(ab, this.$refs.docxPreviewBox, null, {
+						inWrapper: false,
+						ignoreWidth: false,
+						ignoreHeight: false
+					});
+					return true;
+				}
+			} catch (e) {
+				console.warn('docx-preview 渲染失败:', e);
+			}
+
+			this.wordContent = `
+				<div style="padding: 24px; text-align: center; color: var(--text-muted);">
+					<i class="el-icon-document-remove" style="font-size: 36px; margin-bottom: 8px; color: var(--primary-blue);"></i>
+					<p style="font-size: 14px; margin: 8px 0; color: var(--text-h1); font-weight: 600;">暂无法在线提取该 Word 文档的正文排版</p>
+					<p style="font-size: 12px; margin: 0;">文档可能包含复杂的加密宏或为非标准格式，建议直接点击下方按钮下载后在本地打开查看。</p>
+				</div>
+			`;
+			return false;
+		},
+
+		// ======== Excel 解析 ========
+		async parseExcelBlob(blob) {
+			try {
+				await this.loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
+				const arrayBuffer = await blob.arrayBuffer();
+				const wb = window.XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+				if (wb && wb.SheetNames && wb.SheetNames.length > 0) {
+					const firstSheetName = wb.SheetNames[0];
+					const worksheet = wb.Sheets[firstSheetName];
+					const jsonData = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+
+					if (jsonData && jsonData.length > 0) {
+						let maxCols = 0;
+						jsonData.forEach(row => { if (row.length > maxCols) maxCols = row.length; });
+						this.excelData = jsonData.map(row => {
+							const newRow = row.map(v => (v === null || v === undefined) ? '' : String(v));
+							while (newRow.length < Math.max(maxCols, 3)) { newRow.push(''); }
+							return newRow;
+						});
+						return;
+					}
+				}
+			} catch (e) {
+				console.error('parseExcelBlob error:', e);
+			}
+			this.excelData = [];
 		},
 
 		async extractWordEmbeddings(arrayBuffer) {
@@ -1703,7 +2144,6 @@ export default {
 			}
 		},
 
-		// ======== 富文本编辑器命令工具 ========
 		execWordCmd(cmd, value = null) {
 			document.execCommand(cmd, false, value);
 			if (this.$refs.wordEditableBox) {
@@ -1715,7 +2155,6 @@ export default {
 			this.wordContent = this.decodeQuotedPrintable(e.target.innerHTML);
 		},
 
-		// ======== 精准提取 Word document.xml 原生段落排版 (对齐/缩进) ========
 		async parseWordXmlStyles(arrayBuffer) {
 			const paragraphStyles = [];
 			try {
@@ -1774,13 +2213,11 @@ export default {
 			return paragraphStyles;
 		},
 
-		// ======== 将提取的样式注入 HTML DOM 节点 inline style ========
 		applyWordFormatting(htmlResult, xmlStyles = []) {
 			if (!htmlResult) return htmlResult;
 			const tempDiv = document.createElement('div');
 			tempDiv.innerHTML = htmlResult;
 
-			// 1. 将 Mammoth 的 align-center/right/justify 转换给元素 style 赋值
 			const alignClasses = ['align-center', 'align-right', 'align-justify', 'align-left'];
 			alignClasses.forEach(cls => {
 				const alignVal = cls.replace('align-', '');
@@ -1790,7 +2227,6 @@ export default {
 				});
 			});
 
-			// 2. 将 XML 内部精准解析的居中/首行缩进/左缩进赋值给 HTML 段落节点
 			if (xmlStyles && xmlStyles.length > 0) {
 				const blockElems = tempDiv.querySelectorAll('p, h1, h2, h3, h4, h5, h6, blockquote, li');
 				blockElems.forEach((elem, idx) => {
@@ -1812,32 +2248,18 @@ export default {
 			return tempDiv.innerHTML;
 		},
 
+		// ======== 切换编辑模式 ========
 		async handleToggleEditMode(val) {
-			if (!val || !this.previewFile || !this.previewFile.url) return;
+			if (!val || !this.previewFile) return;
 
 			this.previewLoading = true;
 			try {
-				if (this.previewFileType === 'office_excel') {
-					await this.loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
-					const fileUrl = this.previewFile.url + (this.previewFile.url.includes('?') ? '&' : '?') + '_t=' + Date.now();
-					const resp = await fetch(fileUrl, { cache: 'no-cache' });
-					if (!resp.ok) throw new Error('读取 Excel 失败');
-					const arrayBuffer = await resp.arrayBuffer();
-					const wb = window.XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
-					const firstSheetName = wb.SheetNames[0];
-					const worksheet = wb.Sheets[firstSheetName];
-					const jsonData = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+				const blob = await this.getFileBlob(this.previewFile);
+				if (!blob) throw new Error('读取内存二进制数据失败');
 
-					if (jsonData && jsonData.length > 0) {
-						let maxCols = 0;
-						jsonData.forEach(row => { if (row.length > maxCols) maxCols = row.length; });
-						this.excelData = jsonData.map(row => {
-							const newRow = row.map(v => (v === null || v === undefined) ? '' : String(v));
-							while (newRow.length < Math.max(maxCols, 3)) { newRow.push(''); }
-							return newRow;
-						});
-					} else {
-						this.excelData = [['', '', ''], ['', '', '']];
+				if (this.previewFileType === 'office_excel') {
+					if (!this.excelData || this.excelData.length === 0) {
+						await this.parseExcelBlob(blob);
 					}
 				}
 				else if (this.previewFileType === 'office_word') {
@@ -1849,104 +2271,10 @@ export default {
 						return;
 					}
 
-					try {
-						await this.loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
-						await this.loadScript('https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js');
-					} catch (e) {
-						console.warn('加载 word 解析脚本依赖失败:', e);
+					if (!this.wordContent || this.wordContent.includes('暂无法在线提取')) {
+						await this.parseWordBlob(blob);
 					}
 
-					let arrayBuffer = null;
-					try {
-						const fileUrl = this.previewFile.url + (this.previewFile.url.includes('?') ? '&' : '?') + '_t=' + Date.now();
-						const resp = await fetch(fileUrl, { cache: 'no-cache' });
-						if (resp.ok) {
-							arrayBuffer = await resp.arrayBuffer();
-						}
-					} catch (fErr) {
-						console.warn('Fetch Word 文件失败:', fErr);
-					}
-
-					let htmlResult = '';
-					let xmlStyles = [];
-
-					if (arrayBuffer && arrayBuffer.byteLength > 0) {
-						await this.extractWordEmbeddings(arrayBuffer);
-						xmlStyles = await this.parseWordXmlStyles(arrayBuffer);
-
-						const textDecoder = new TextDecoder('utf-8');
-						let rawText = textDecoder.decode(arrayBuffer).trim();
-						// 自动将转义的 =3D 及 Quoted-Printable 字符格式化为标准 HTML 文本
-						rawText = this.decodeQuotedPrintable(rawText);
-
-						if (rawText.startsWith('<') || rawText.startsWith('\ufeff<') || rawText.includes('<html')) {
-							const bodyMatch = rawText.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-							if (bodyMatch && bodyMatch[1]) {
-								htmlResult = bodyMatch[1].trim();
-							} else {
-								htmlResult = rawText;
-							}
-						} else if (window.mammoth) {
-							try {
-								const customStyleMap = [
-									"p[alignment='center'] => p.align-center:fresh",
-									"p[alignment='right'] => p.align-right:fresh",
-									"p[alignment='justify'] => p.align-justify:fresh",
-									"p[alignment='left'] => p.align-left:fresh",
-									"p[style-name='标题 1'] => h1:fresh",
-									"p[style-name='标题 2'] => h2:fresh",
-									"p[style-name='标题 3'] => h3:fresh",
-									"p[style-name='标题 4'] => h4:fresh",
-									"p[style-name='标题 5'] => h5:fresh",
-									"p[style-name='标题 6'] => h6:fresh",
-									"p[style-name='标题'] => h1:fresh",
-									"p[style-name='副标题'] => h4.subtitle:fresh",
-									"p[style-name='目录 1'] => p.toc-item.toc-1:fresh",
-									"p[style-name='目录 2'] => p.toc-item.toc-2:fresh",
-									"p[style-name='目录 3'] => p.toc-item.toc-3:fresh",
-									"p[style-name='TOC 1'] => p.toc-item.toc-1:fresh",
-									"p[style-name='TOC 2'] => p.toc-item.toc-2:fresh",
-									"p[style-name='TOC 3'] => p.toc-item.toc-3:fresh",
-									"p[style-name='Table of Contents'] => div.toc-wrapper:fresh",
-									"p[style-name='Heading 1'] => h1:fresh",
-									"p[style-name='Heading 2'] => h2:fresh",
-									"p[style-name='Heading 3'] => h3:fresh",
-									"p[style-name='Heading 4'] => h4:fresh",
-									"p[style-name='List Paragraph'] => li:fresh",
-									"p[style-name='引用'] => blockquote:fresh",
-									"r[style-name='Strong'] => strong",
-									"r[style-name='加粗'] => strong",
-									"r[style-name='Hyperlink'] => a"
-								];
-
-								const options = {
-									styleMap: customStyleMap,
-									includeDefaultStyleMap: true,
-									ignoreEmptyParagraphs: false
-								};
-
-								if (window.mammoth.transforms && window.mammoth.transforms.paragraphWithAlignment) {
-									options.transformDocument = window.mammoth.transforms.paragraphWithAlignment;
-								}
-
-								const result = await window.mammoth.convertToHtml({ arrayBuffer: arrayBuffer }, options);
-								htmlResult = result.value || '';
-							} catch (mErr) {
-								console.warn('Mammoth convertToHtml 失败:', mErr);
-								htmlResult = rawText;
-							}
-						}
-					}
-
-					// 解码并注入居中、缩进排版格式
-					htmlResult = this.decodeQuotedPrintable(htmlResult);
-					htmlResult = this.applyWordFormatting(htmlResult, xmlStyles);
-
-					if (!htmlResult && this.wordContent && !this.wordContent.includes('解析无内容')) {
-						htmlResult = this.decodeQuotedPrintable(this.wordContent);
-					}
-
-					this.wordContent = htmlResult || '<p>【该 Word 文档为空或解析无内容】</p>';
 					this.$nextTick(() => {
 						if (this.$refs.wordEditableBox) {
 							this.$refs.wordEditableBox.innerHTML = this.wordContent;
@@ -1954,13 +2282,13 @@ export default {
 					});
 				}
 				else if (this.previewFileType === 'text') {
-					const fileUrl = this.previewFile.url + (this.previewFile.url.includes('?') ? '&' : '?') + '_t=' + Date.now();
-					const resp = await fetch(fileUrl, { cache: 'no-cache' });
-					this.previewContent = await resp.text();
+					if (!this.previewContent) {
+						this.previewContent = await blob.text();
+					}
 				}
 			} catch (e) {
 				console.error('handleToggleEditMode error:', e);
-				this.showToast('文件获取失败，建议下载到本地修改后重新上传覆盖');
+				this.showToast('读取内存文件失败，建议直接下载到本地查看');
 				this.isEditMode = false;
 			} finally {
 				this.previewLoading = false;
@@ -2021,7 +2349,6 @@ export default {
 					if (this.$refs.wordEditableBox) {
 						currentHtml = this.$refs.wordEditableBox.innerHTML;
 					}
-					// 在转换保存前确保没有任何残存的 =3D 字符
 					currentHtml = this.decodeQuotedPrintable(currentHtml);
 					this.wordContent = currentHtml;
 
@@ -2063,11 +2390,12 @@ export default {
 
 				const newFile = new File([newBlob], filename, { type: newBlob.type });
 
-				await del_doc({ id: this.currentProblemOfPreview.id, file_id: this.previewFile.id });
+				await del_doc({ id: this.currentProblemOfPreview.id, file_id: this.previewFile.id || this.previewFile.file_id });
 
 				const formData = new FormData();
-				formData.append('file', newFile);
+				formData.append('file', newFile, filename);
 				formData.append('problem_id', this.currentProblemOfPreview.id);
+				formData.append('name', filename);
 
 				const resp = await upload_doc(formData);
 				const res = resp?.data?.code !== undefined ? resp.data : resp;
@@ -2077,9 +2405,10 @@ export default {
 
 					const prob = this.problems.find(p => p.id === this.currentProblemOfPreview.id);
 					if (prob && prob.attachments) {
-						const idx = prob.attachments.findIndex(a => a.id === this.previewFile.id);
+						const targetFileId = this.previewFile.id || this.previewFile.file_id;
+						const idx = prob.attachments.findIndex(a => (a.id || a.file_id) === targetFileId || a.name === filename);
 						const updatedAttachment = {
-							id: fileData.id,
+							id: fileData.id || fileData.file_id,
 							name: fileData.name || filename,
 							url: fileData.url,
 							uploader: fileData.uploader || null
@@ -2105,6 +2434,9 @@ export default {
 		},
 
 		resetPreview() {
+			if (this.previewFile && this.previewFile.url && this.previewFile.url.startsWith('blob:')) {
+				URL.revokeObjectURL(this.previewFile.url);
+			}
 			this.previewFile = null;
 			this.currentProblemOfPreview = null;
 			this.previewFileType = '';
@@ -2837,13 +3169,18 @@ export default {
 			let attachmentsList = [];
 			if (Array.isArray(p.file_url) && p.file_url.length > 0) {
 				attachmentsList = p.file_url.map(f => ({
-					id: f.id,
+					id: f.id || f.file_id,
 					name: f.name || '附件文件',
 					url: f.url,
 					uploader: f.uploader || null
 				}));
 			} else if (p.attachment) {
-				attachmentsList = [p.attachment];
+				attachmentsList = [{
+					id: p.attachment.id || p.attachment.file_id,
+					name: p.attachment.name || '附件文件',
+					url: p.attachment.url,
+					uploader: p.attachment.uploader || null
+				}];
 			}
 
 			const catId = p.category_id || p.categoryId || (p.category ? p.category.id : null);
@@ -2918,11 +3255,6 @@ export default {
 		},
 
 		triggerUpload(probId) {
-			const prob = this.problems.find(p => p.id === probId);
-			if (prob && prob.attachments && prob.attachments.length >= 10) {
-				this.showToast('单个文档最多只能上传 10 个附件');
-				return;
-			}
 			this.uploadTargetProbId = probId;
 			this.$refs.hiddenFileInput.click();
 		},
@@ -2932,7 +3264,9 @@ export default {
 			if (!file || !this.uploadTargetProbId) return;
 
 			const prob = this.problems.find(p => p.id === this.uploadTargetProbId);
-			if (prob && prob.attachments && prob.attachments.length >= 10) {
+			const isExistSameName = prob && prob.attachments && prob.attachments.some(a => a.name === file.name);
+
+			if (prob && prob.attachments && prob.attachments.length >= 10 && !isExistSameName) {
 				this.showToast('单个文档最多只能上传 10 个附件');
 				event.target.value = '';
 				this.uploadTargetProbId = null;
@@ -2940,8 +3274,10 @@ export default {
 			}
 
 			const formData = new FormData();
-			formData.append('file', file);
+			formData.append('file', file, file.name);
 			formData.append('problem_id', this.uploadTargetProbId);
+			formData.append('name', file.name);
+			formData.append('override', 'true');
 
 			this.apiLoading = true;
 			try {
@@ -2955,14 +3291,25 @@ export default {
 						if (!prob.attachments) {
 							this.$set(prob, 'attachments', []);
 						}
-						prob.attachments.push({
-							id: fileData.id,
+
+						const newAttachment = {
+							id: fileData.id || fileData.file_id,
 							name: fileData.name || file.name,
 							url: fileData.url,
 							uploader: fileData.uploader || null
-						});
+						};
+
+						const uploadName = fileData.name || file.name;
+						const existIdx = prob.attachments.findIndex(a => a.name === uploadName);
+
+						if (existIdx !== -1) {
+							prob.attachments.splice(existIdx, 1, newAttachment);
+							this.showToast(`附件【${uploadName}】同名覆盖更新成功！`);
+						} else {
+							prob.attachments.push(newAttachment);
+							this.showToast(`附件【${uploadName}】上传成功！`);
+						}
 					}
-					this.showToast(`附件【${fileData.name || file.name}】上传成功！`);
 				} else {
 					this.showToast(res?.msg || '附件上传失败');
 				}
@@ -2976,20 +3323,6 @@ export default {
 			}
 		},
 
-		downloadFile(attachment) {
-			if (!attachment || !attachment.url) {
-				this.showToast('附件下载链接不存在');
-				return;
-			}
-			const link = document.createElement('a');
-			link.href = attachment.url;
-			link.download = attachment.name || '附件文件';
-			document.body.appendChild(link);
-			link.click();
-			document.body.removeChild(link);
-			this.showToast('附件开始下载...');
-		},
-
 		async removeAttachment(prob, attachment, index) {
 			if (!prob || !attachment) return;
 			if (!this.canManageShare(prob)) {
@@ -2998,14 +3331,15 @@ export default {
 			}
 			this.apiLoading = true;
 			try {
-				const resp = await del_doc({ id: prob.id, file_id: attachment.id });
+				const fileId = attachment.id || attachment.file_id;
+				const resp = await del_doc({ id: prob.id, file_id: fileId });
 				const res = resp?.data?.code !== undefined ? resp.data : resp;
 
 				if (res && res.code === 1000) {
 					if (typeof index === 'number' && prob.attachments) {
 						prob.attachments.splice(index, 1);
 					} else if (prob.attachments) {
-						const targetIdx = prob.attachments.findIndex(item => item.id === attachment.id);
+						const targetIdx = prob.attachments.findIndex(item => (item.id || item.file_id) === fileId);
 						if (targetIdx !== -1) prob.attachments.splice(targetIdx, 1);
 					}
 					this.showToast('附件已成功移除');
@@ -5730,5 +6064,11 @@ export default {
 .toggle-label.is-active {
 	color: var(--primary-blue);
 	font-weight: 600;
+}
+/* 全局右键菜单浮层定位样式 */
+.custom-context-menu-popover {
+	position: fixed;
+	z-index: 9999;
+	min-width: 140px;
 }
 </style>

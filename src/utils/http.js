@@ -22,27 +22,33 @@ instance.interceptors.request.use(config => {
 // 直接new Promise里边的函数会立即执行，所以需要调用时候才执行，只能把new Promise当做函数返回值
 
 instance.interceptors.response.use(resp => {
-    // 响应拦截逻辑写在这里
-    return Promise.resolve(resp) // 异步调用方式将回调函数作为函数参数返回
-}, err => {
-    switch (err.response.status) {
-        case 400:
-            Message.error(err.response.data.message);
-            return new Promise(() => {});
+
+    switch (resp.data.code) {
+        case 401:
+            Message.error('登录凭证已过期，请重新登录, 3秒后跳转到登录页');
+            setTimeout(() => {
+                localStorage.removeItem('sign');
+                localStorage.removeItem('username');
+                localStorage.removeItem('uid');
+                window.location.href = '/login';
+                window.location.href = '/login';
+            }, 3000);
+            break;
         case 403:
-            Message.error(err.response.data.message);
-            return new Promise(() => {});
+            Message.error('您没有权限访问该资源');
+            break;
         case 500:
-            Message.error(err);
-            return new Promise(() => {});
+            Message.error('服务器内部错误，请稍后再试');
+            break;
         case 502:
-            Message.error(err.response.data.message+" 3秒后将跳转到登录页!");
-            setTimeout(()=>{
-                sessionStorage.clear();
-                window.location.href = '/';
-                ;},3000)
-            return new Promise(() => {});
+            Message.error('网关错误，请稍后再试');
+            break;           
     }
+    
+    return Promise.resolve(resp) 
+}, err => {
+    console.log(err);
+
     return Promise.reject(err)
 });
 
@@ -54,7 +60,7 @@ export const get = (url, params) => {
         }).then(resp => {
             resolve(resp);
         }).catch(error => {
-            Message.error(error+":无法连接服务器");
+            // Message.error(error+":无法连接服务器");
             return new Promise(() => {});
         })
     })
@@ -65,7 +71,7 @@ export const post = (url, data) => {
         instance.post(url, data).then(resp => {
             resolve(resp);
         }).catch(error => {
-            Message.error(error+":无法连接服务器");
+            // Message.error(error+":无法连接服务器");
             // reject(error);
             return new Promise(() => {});
         })
@@ -77,7 +83,7 @@ export const loginPost = (url, data, other) => {
         instance.post(url + "?user="+other, data).then(resp => {
             resolve(resp);
         }).catch(error => {
-            Message.error(error+":无法连接服务器");
+            // Message.error(error+":无法连接服务器");
             // reject(error);
             return new Promise(() => {});
         })

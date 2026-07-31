@@ -43,7 +43,7 @@ module.exports = {
 			devServer.app.post('/api/svn-commit-docx', async (req, res) => {
 				try {
 					const body = await parseJsonBody(req);
-					const { repoUrl, username, password, title, solution, commitMsg } = body;
+					const { repoUrl, username, password, title, solution, commitMsg, isAttachment, fileName, fileBase64 } = body;
 
 					if (!repoUrl || !username || !password) {
 						return res.status(400).json({ code: 400, msg: '缺少必要的 SVN 账号、密码或仓库地址' });
@@ -52,11 +52,31 @@ module.exports = {
 					const tempDir = path.join(__dirname, 'temp_svn_docs');
 					if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
-					const safeTitle = (title || '排错文档').replace(/[\/\\:*?"<>|]/g, '_');
-					const docxFileName = safeTitle.endsWith('.docx') ? safeTitle : `${safeTitle}.docx`;
-					const tempFilePath = path.join(tempDir, docxFileName);
+					let targetFileName = '';
+					let tempFilePath = '';
 
-					const wordHtml = `
+					// ================= 分支 1：如果是提交附件（保持真实原文件名和二进制格式） =================
+					if (isAttachment || fileBase64) {
+						const rawFileName = (fileName || title || 'attachment').replace(/[\/\\:*?"<>|]/g, '_');
+						targetFileName = rawFileName;
+						tempFilePath = path.join(tempDir, targetFileName);
+
+						if (fileBase64) {
+							// 将前端传过来的 Base64 还原为真实的二进制文件 (支持 .tgz, .zip, .pdf, .png 等任何格式)
+							const base64Data = fileBase64.replace(/^data:.*?;base64,/, '');
+							const fileBuffer = Buffer.from(base64Data, 'base64');
+							fs.writeFileSync(tempFilePath, fileBuffer);
+						} else {
+							fs.writeFileSync(tempFilePath, solution || '', 'utf8');
+						}
+					} 
+					// ================= 分支 2：原有的排错文档正文提交 (.docx) - 保持原样完全不动 =================
+					else {
+						const safeTitle = (title || '排错文档').replace(/[\/\\:*?"<>|]/g, '_');
+						targetFileName = safeTitle.endsWith('.docx') ? safeTitle : `${safeTitle}.docx`;
+						tempFilePath = path.join(tempDir, targetFileName);
+
+						const wordHtml = `
             <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word'>
             <head><meta charset='utf-8'></head>
             <body style="font-family: Microsoft YaHei; font-size: 11pt;">
@@ -65,12 +85,18 @@ module.exports = {
             </body>
             </html>`;
 
-					fs.writeFileSync(tempFilePath, '\ufeff' + wordHtml, 'utf8');
+						fs.writeFileSync(tempFilePath, '\ufeff' + wordHtml, 'utf8');
+					}
 
 					let cleanRepoUrl = repoUrl.trim();
+					// 如果地址结尾带有旧文件名，将其剔除只保留目录路径
+					if (/\.[a-zA-Z0-9]+$/i.test(cleanRepoUrl)) {
+						cleanRepoUrl = cleanRepoUrl.substring(0, cleanRepoUrl.lastIndexOf('/') + 1);
+					}
+
 					const targetSvnUrl = cleanRepoUrl.endsWith('/')
-						? `${cleanRepoUrl}${encodeURIComponent(docxFileName)}`
-						: `${cleanRepoUrl}/${encodeURIComponent(docxFileName)}`;
+						? `${cleanRepoUrl}${encodeURIComponent(targetFileName)}`
+						: `${cleanRepoUrl}/${encodeURIComponent(targetFileName)}`;
 
 					const svnCmd = `svn import "${tempFilePath}" "${targetSvnUrl}" -m "${commitMsg || 'Auto Commit'}" --username "${username}" --password "${password}" --non-interactive --trust-server-cert --trust-server-cert-failures=unknown-ca,cn-mismatch,expired,not-yet-valid,other`;
 

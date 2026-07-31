@@ -15,6 +15,7 @@ export const update_problem_share = (params) => post(`/v1/update-problem-share?s
 export const get_categories = (params) => get(`/v1/get-category?sign=${localStorage.getItem('sign')}&uid=${localStorage.getItem('uid')}`, params);
 export const get_problems = (params) => get(`/v1/get-problem?sign=${localStorage.getItem('sign')}&uid=${localStorage.getItem('uid')}`, params);
 export const get_users = (params) => get(`/v1/get-users?sign=${localStorage.getItem('sign')}&uid=${localStorage.getItem('uid')}`, params);
+export const download_file = (params) => get(`/v1/download-file?sign=${localStorage.getItem('sign')}&uid=${localStorage.getItem('uid')}`, params);
 
 // 登录验证接口
 export const login_auth = (params) => post('/v1/doc/login', params);

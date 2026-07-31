@@ -95,7 +95,7 @@
 
 <script>
 import { Message } from 'element-ui';
-import { register_auth } from '@/api'; // 对应后端的注册接口 API
+import { register_auth } from '@/api';
 
 export default {
 	name: 'Register',
@@ -149,10 +149,22 @@ export default {
 			}, 600);
 		},
 
-		// 返回登录
+		// 安全返回登录入口
 		goLogin() {
-			if (this.$router) {
-				this.$router.push('/');
+			const targetPath = '/'; // 如果登录页路由是 /login，可调整修改为 '/login'
+
+			if (this.$router && this.$route.path !== targetPath) {
+				this.$router.push(targetPath).catch(err => {
+					// 捕获并屏蔽路由守卫重定向引发的正常 Promise 异常
+					if (
+						err && 
+						(err.name === 'NavigationDuplicated' || 
+						 (err.message && err.message.includes('Redirected')))
+					) {
+						return;
+					}
+					console.error(err);
+				});
 			}
 		},
 
