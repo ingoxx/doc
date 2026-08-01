@@ -489,30 +489,25 @@
 																</span>
 															</div>
 
-															<!-- 更多附件下拉菜单 -->
-															<el-dropdown v-if="prob.attachments.length > 1" trigger="click" @click.native.stop>
-																<div class="attachment-badge more-attachment-badge" title="查看更多附件">
+															<!-- 更多附件下拉菜单 (改为 el-popover 并复用 action-menu-list 样式) -->
+															<el-popover v-if="prob.attachments.length > 1" placement="bottom-start" width="260" trigger="click" :visible-arrow="false" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
+																<div class="action-menu-list">
+																	<div class="action-item" v-for="(file, fIdx) in prob.attachments.slice(1)" :key="file.id || fIdx"
+																		style="display: flex; align-items: center; justify-content: space-between; gap: 12px;"
+																		@click.stop="previewAttachment(file, prob)"
+																		@contextmenu.prevent.stop="openAttachmentContextMenu(file, prob, $event)">
+																		<span style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 190px;" :title="'左键点击直接预览 / 右键操作菜单：' + file.name">
+																			<i class="el-icon-document"></i> {{ file.name }}
+																		</span>
+																		<i v-if="canManageShare(prob)" class="el-icon-close" style="color: #ef4444; cursor: pointer; font-size: 13px; margin-left: auto;"
+																			@click.stop="removeAttachment(prob, file, fIdx + 1)" title="移除此附件"></i>
+																	</div>
+																</div>
+																<div slot="reference" class="attachment-badge more-attachment-badge" title="查看更多附件" @click.stop>
 																	<span>+{{ prob.attachments.length - 1 }} 个附件</span>
 																	<i class="el-icon-arrow-down el-icon--right"></i>
 																</div>
-																<el-dropdown-menu slot="dropdown" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
-																	<el-dropdown-item v-for="(file, fIdx) in prob.attachments.slice(1)" :key="file.id || fIdx">
-																		
-																		<div 
-																			style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 180px;" 
-																			@click.stop="previewAttachment(file, prob)"
-																			@contextmenu.prevent.stop="openAttachmentContextMenu(file, prob, $event)"
-																		>
-																			<span style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px;" :title="'左键点击直接预览 / 右键操作菜单：' + file.name">
-																				<i class="el-icon-document"></i> {{ file.name }}
-																			</span>
-																			<i v-if="canManageShare(prob)" class="el-icon-close" style="color: #ef4444; cursor: pointer; font-size: 13px;"
-																				@click.stop="removeAttachment(prob, file, fIdx + 1)" title="移除此附件"></i>
-																		</div>
-
-																	</el-dropdown-item>
-																</el-dropdown-menu>
-															</el-dropdown>
+															</el-popover>
 														</div>
 													</transition>
 												</div>
@@ -526,20 +521,20 @@
 														<i class="el-icon-check"></i> <span>保存修改</span>
 													</div>
 
-													<!-- SVN 拉取与提交同步按钮 -->
-													<el-dropdown trigger="click" @command="(cmd) => handleSvnCommand(cmd, prob)" @click.native.stop>
-														<div class="action-btn svn-action-btn">
+													<!-- SVN 拉取与提交同步按钮 (重构为 el-popover 完全复用样式) -->
+													<el-popover placement="bottom" width="240" trigger="click" :visible-arrow="false" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
+														<div class="action-menu-list">
+															<div class="action-item" @click="handleSvnCommand('pull', prob)">
+																<i class="el-icon-download"></i> <span>拉取最新版本 (SVN Pull)</span>
+															</div>
+															<div class="action-item" @click="handleSvnCommand('commit', prob)">
+																<i class="el-icon-upload2"></i> <span>提交版本更新 (SVN Commit)</span>
+															</div>
+														</div>
+														<div slot="reference" class="action-btn svn-action-btn" @click.stop>
 															<i class="el-icon-refresh"></i> <span>SVN同步</span> <i class="el-icon-arrow-down el-icon--right"></i>
 														</div>
-														<el-dropdown-menu slot="dropdown" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
-															<el-dropdown-item command="pull">
-																<i class="el-icon-download"></i> 拉取最新版本 (SVN Pull)
-															</el-dropdown-item>
-															<el-dropdown-item command="commit">
-																<i class="el-icon-upload2"></i> 提交版本更新 (SVN Commit)
-															</el-dropdown-item>
-														</el-dropdown-menu>
-													</el-dropdown>
+													</el-popover>
 
 													<div class="copy-btn action-btn" v-if="!prob.attachments || prob.attachments.length < 10"
 														@click.stop="triggerUpload(prob.id)">
@@ -550,19 +545,20 @@
 														<i class="el-icon-folder-opened"></i> <span>移动分类</span>
 													</div>
 
-													<el-dropdown trigger="click" @command="(cmd) => handleCopyCommand(cmd, prob.solution)" @click.native.stop>
-														<div class="copy-btn action-btn">
+													<!-- 复制全文下拉按钮 (重构为 el-popover 完全复用样式) -->
+													<el-popover placement="bottom" width="240" trigger="click" :visible-arrow="false" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
+														<div class="action-menu-list">
+															<div class="action-item" @click="handleCopyCommand('raw', prob.solution)">
+																<i class="el-icon-document-copy"></i> <span>复制原文 (保留 MD / 格式)</span>
+															</div>
+															<div class="action-item" @click="handleCopyCommand('plain', prob.solution)">
+																<i class="el-icon-tickets"></i> <span>复制纯文本 (转换无格式文本)</span>
+															</div>
+														</div>
+														<div slot="reference" class="copy-btn action-btn" @click.stop>
 															<i class="el-icon-document-copy"></i> <span>复制全文</span> <i class="el-icon-arrow-down el-icon--right"></i>
 														</div>
-														<el-dropdown-menu slot="dropdown" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
-															<el-dropdown-item command="raw">
-																<i class="el-icon-document-copy"></i> 复制原文 (保留 MD / 格式)
-															</el-dropdown-item>
-															<el-dropdown-item command="plain">
-																<i class="el-icon-tickets"></i> 复制纯文本 (转换无格式文本)
-															</el-dropdown-item>
-														</el-dropdown-menu>
-													</el-dropdown>
+													</el-popover>
 												</div>
 											</div>
 
@@ -620,7 +616,7 @@
 
 		<!-- ================= 3. 弹窗区 ================= -->
 
-		<!-- AI 智能问答与历史解析弹窗 (精炼升华版) -->
+		<!-- AI 智能问答与历史解析弹窗 -->
 		<el-dialog 
 			v-dialogDrag 
 			:visible.sync="aiDialog.visible" 
@@ -636,7 +632,6 @@
 					<span class="ai-model-tag">{{ aiForm.model || 'gemini-1.5-flash' }}</span>
 				</div>
 				<div class="header-actions-right">
-					<!-- 仿 Models/Agents 架构的全新胶囊 Pill 切换器 -->
 					<div class="ai-pill-switch">
 						<div class="pill-item" :class="{ 'active': aiActiveTab === 'chat' }" @click="aiActiveTab = 'chat'">
 							<i class="el-icon-chat-dot-square"></i> 智能追问
@@ -696,20 +691,20 @@
 							<span class="status-text">{{ aiDialog.isStreaming ? 'AI 正在实时思考生成回答...' : (aiDialog.responseText ? 'AI 解析完成' : 'AI 助手就绪') }}</span>
 						</div>
 						<div class="header-actions" v-if="aiDialog.responseText && !aiDialog.isStreaming">
-							<!-- 复制完整回答下拉框（采用与代码块复制按钮一致的样式风格） -->
-							<el-dropdown trigger="click" @command="handleAiCopyCommand">
-								<button class="ai-code-copy-btn" type="button" title="点击选择复制格式">
+							<!-- 复制完整回答下拉框 (也同步重构为了统一弹窗样式) -->
+							<el-popover placement="bottom-end" width="160" trigger="click" :visible-arrow="false" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
+								<div class="action-menu-list">
+									<div class="action-item" @click="handleAiCopyCommand('raw')">
+										<i class="el-icon-document-copy"></i> <span>复制 MD 格式</span>
+									</div>
+									<div class="action-item" @click="handleAiCopyCommand('plain')">
+										<i class="el-icon-tickets"></i> <span>复制纯文本格式</span>
+									</div>
+								</div>
+								<button slot="reference" class="ai-code-copy-btn" type="button" title="点击选择复制格式">
 									<i class="el-icon-document-copy"></i> 复制回答 <i class="el-icon-arrow-down el-icon--right"></i>
 								</button>
-								<el-dropdown-menu slot="dropdown" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
-									<el-dropdown-item command="raw">
-										<i class="el-icon-document-copy"></i> 复制 MD 格式
-									</el-dropdown-item>
-									<el-dropdown-item command="plain">
-										<i class="el-icon-tickets"></i> 复制纯文本格式
-									</el-dropdown-item>
-								</el-dropdown-menu>
-							</el-dropdown>
+							</el-popover>
 						</div>
 					</div>
 
@@ -726,89 +721,73 @@
 
 				<!-- 底部交互式输入追问框 & 上传图片/工具单排栏 -->
 				<div class="ai-input-composer">
-					<!-- 图片预览缩略图 -->
-					<transition name="el-zoom-in-top">
-						<div v-if="aiSelectedImage" class="image-preview-badge">
-							<img :src="aiSelectedImage.previewUrl" class="thumb-img" />
-							<span class="thumb-name">{{ aiSelectedImage.name }}</span>
-							<i class="el-icon-close remove-img-btn" @click="removeSelectedAiImage" title="移除图片"></i>
-						</div>
-					</transition>
-
-					<div class="composer-toolbar">
+					<div class="composer-textarea-wrapper">
 						<el-input 
 							type="textarea" 
-							:rows="3" 
+							:autosize="{ minRows: 2, maxRows: 5 }" 
 							v-model="aiInputQuery" 
-							placeholder="输入追问、代码或报错 (Shift+Enter 换行，Enter 发送)..." 
+							placeholder="输入追问、代码或报错提示..." 
 							class="modern-el-input composer-textarea"
 							@keyup.enter.native="handleComposerEnter"
 						></el-input>
 					</div>
 
-					<!-- 底部一排单行工具栏（图标化与发送/停止按钮并排） -->
 					<div class="composer-single-bar">
 						<div class="bar-left-tools">
-							<!-- 识图/上传图片按钮 (Icon 图标化) -->
 							<el-tooltip :content="aiSelectedImage ? '更换分析图片' : '上传图片/截图分析'" placement="top">
-								<el-button size="mini" class="icon-tool-btn" :class="{ 'has-file': !!aiSelectedImage }" icon="el-icon-picture-outline" @click="triggerAiImageUpload"></el-button>
+								<div class="pill-tool-btn" :class="{ 'has-file': !!aiSelectedImage }" @click="triggerAiImageUpload">
+									<i class="el-icon-picture-outline"></i>
+									<span>{{ aiSelectedImage ? '已选图片' : '上传图片' }}</span>
+								</div>
 							</el-tooltip>
 
-							<div class="tool-divider"></div>
+							<transition name="el-zoom-in-top">
+								<div v-if="aiSelectedImage" class="ai-active-pill-chip">
+									<i class="el-icon-image"></i>
+									<span class="chip-text" :title="aiSelectedImage.name">{{ aiSelectedImage.name }}</span>
+									<i class="el-icon-close remove-chip-btn" @click.stop="removeSelectedAiImage" title="移除图片"></i>
+								</div>
+							</transition>
 
-							<!-- 快捷场景预设 Icon 芯片 -->
-							<div class="preset-icon-group">
-								<el-tooltip content="🎯 详细排错" placement="top">
-									<span class="preset-icon-chip" @click="applyPromptPreset('详细排错分析')">🎯</span>
-								</el-tooltip>
-								<el-tooltip content="💡 代码优化" placement="top">
-									<span class="preset-icon-chip" @click="applyPromptPreset('代码优化与修复')">💡</span>
-								</el-tooltip>
-								<el-tooltip content="📝 简明总结" placement="top">
-									<span class="preset-icon-chip" @click="applyPromptPreset('简明原因总结')">📝</span>
-								</el-tooltip>
-								<el-tooltip content="🌐 日志翻译" placement="top">
-									<span class="preset-icon-chip" @click="applyPromptPreset('英文日志翻译')">🌐</span>
-								</el-tooltip>
+							<div class="tool-divider" v-if="!aiSelectedImage"></div>
+
+							<div class="preset-icon-group" v-if="!aiSelectedImage">
+								<span class="preset-pill-chip" @click="applyPromptPreset('详细排错分析')">🎯 详细排错</span>
+								<span class="preset-pill-chip" @click="applyPromptPreset('代码优化与修复')">💡 代码优化</span>
+								<span class="preset-pill-chip" @click="applyPromptPreset('简明原因总结')">📝 简明总结</span>
+								<span class="preset-pill-chip" @click="applyPromptPreset('英文日志翻译')">🌐 日志翻译</span>
 							</div>
 
-							<div class="tool-divider" v-if="aiInputQuery"></div>
-
-							<!-- 一键清空输入框文本Icon按钮 -->
 							<el-tooltip v-if="aiInputQuery" content="清空输入内容" placement="top">
-								<el-button size="mini" type="text" class="clear-input-btn" icon="el-icon-delete" @click="aiInputQuery = ''"></el-button>
+								<i class="el-icon-delete clear-input-icon" @click="aiInputQuery = ''"></i>
 							</el-tooltip>
 						</div>
 
 						<div class="bar-right-actions">
-							<!-- 未流式生成时展示发送按钮，带禁用校验 -->
-							<el-button 
+							<button 
 								v-if="!aiDialog.isStreaming"
-								size="small" 
-								type="primary" 
-								class="primary-gradient-btn send-btn" 
-								icon="el-icon-s-promotion" 
+								type="button"
+								class="run-send-btn" 
 								:disabled="!canSendAiQuery"
 								@click="sendAiQueryStream(false)">
-								发送
-							</el-button>
+								<span>发送</span>
+								<span class="kbd-shortcut">Enter ↵</span>
+							</button>
 
-							<!-- 流式生成中展示停止回复按钮 -->
-							<el-button 
+							<button 
 								v-else
-								size="small" 
-								type="danger" 
-								class="stop-btn" 
-								icon="el-icon-video-pause" 
+								type="button"
+								class="run-stop-btn" 
 								@click="abortAiStream">
-								停止回复
-							</el-button>
+								<i class="el-icon-video-pause"></i>
+								<span>停止生成</span>
+							</button>
 						</div>
 					</div>
 				</div>
 			</div>
 
-			<!-- 视图 2：AI 历史提问与回复列表 (最多保存 10 条 FIFO) -->
+			<!-- 视图 2：AI 历史提问与回复列表 -->
 			<div v-show="aiActiveTab === 'history'" class="ai-history-view-container">
 				<div class="history-list-header">
 					<span class="history-count-title"><i class="el-icon-history"></i> 本地问答历史 ({{ aiHistory.length }}/10 条)</span>
@@ -4603,6 +4582,16 @@ export default {
 	box-shadow: 0 6px 20px rgba(14, 165, 233, 0.65);
 }
 
+/* ================= 右键附件快捷上下文菜单 (修复截图 1 底部撑满拉伸问题) ================= */
+.custom-context-menu-popover {
+	position: fixed !important;
+	z-index: 99999 !important;
+	width: auto !important;
+	min-width: 150px !important;
+	box-sizing: border-box !important;
+	margin: 0 !important;
+}
+
 /* ================= 页面右侧 AI 悬浮球 (FAB) ================= */
 .ai-floating-fab {
 	position: fixed;
@@ -4921,32 +4910,57 @@ export default {
 	50% { opacity: 0; }
 }
 
-/* 输入框组合区 & 底部一排单行工具栏 */
+/* ================= 仿 Google AI Studio 极客输入框 CSS ================= */
 .ai-input-composer {
 	background-color: var(--hover-sidebar);
 	border: 1px solid var(--border-color);
-	border-radius: 12px;
-	padding: 10px 12px;
+	border-radius: 16px;
+	padding: 12px 16px;
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+	transition: border-color 0.25s, box-shadow 0.25s;
+}
+
+.ai-input-composer:focus-within {
+	border-color: var(--primary-blue);
+	box-shadow: 0 0 0 1px var(--primary-blue), 0 6px 20px rgba(14, 165, 233, 0.15);
+}
+
+.composer-textarea-wrapper {
+	width: 100%;
 }
 
 .composer-textarea ::v-deep .el-textarea__inner {
-	background-color: var(--bg-card) !important;
+	background-color: transparent !important;
+	border: none !important;
+	padding: 0 !important;
+	box-shadow: none !important;
+	color: var(--text-h1) !important;
+	font-size: 13.5px;
+	line-height: 1.6;
+	resize: none;
+}
+
+.composer-textarea ::v-deep .el-textarea__inner::placeholder {
+	color: var(--text-muted);
 }
 
 .composer-single-bar {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	padding-top: 4px;
+	padding-top: 6px;
+	flex-wrap: wrap;
+	gap: 10px;
 }
 
 .bar-left-tools {
 	display: flex;
 	align-items: center;
 	gap: 8px;
+	flex-wrap: wrap;
 }
 
 .tool-divider {
@@ -4956,51 +4970,114 @@ export default {
 	margin: 0 2px;
 }
 
-.icon-tool-btn {
-	padding: 6px 10px !important;
-	font-size: 14px !important;
-	background-color: var(--bg-card) !important;
-	border-color: var(--border-color) !important;
-	color: var(--text-p) !important;
+/* 仿截图 Tools 按钮样式 */
+.pill-tool-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 5px 12px;
+	background-color: var(--bg-card);
+	border: 1px solid var(--border-color);
+	border-radius: 20px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--text-p);
+	cursor: pointer;
+	user-select: none;
+	transition: all 0.2s;
 }
 
-.icon-tool-btn.has-file {
-	border-color: var(--primary-blue) !important;
-	color: var(--primary-blue) !important;
-	background-color: var(--active-sidebar) !important;
+.pill-tool-btn:hover {
+	border-color: var(--primary-blue);
+	color: var(--primary-blue);
+	background-color: var(--active-sidebar);
 }
 
+.pill-tool-btn.has-file {
+	border-color: var(--primary-blue);
+	color: var(--primary-blue);
+	background-color: var(--active-sidebar);
+}
+
+/* 完全对标截图 Grounding with Google Search ✕ 蓝光高亮胶囊标签 */
+.ai-active-pill-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	background: rgba(14, 165, 233, 0.15);
+	border: 1px solid rgba(14, 165, 233, 0.4);
+	color: var(--primary-blue);
+	padding: 4px 12px;
+	border-radius: 20px;
+	font-size: 12px;
+	font-weight: 600;
+	user-select: none;
+	animation: pillPop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes pillPop {
+	0% { transform: scale(0.85); opacity: 0; }
+	100% { transform: scale(1); opacity: 1; }
+}
+
+.ai-active-pill-chip .chip-text {
+	max-width: 140px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.ai-active-pill-chip .remove-chip-btn {
+	cursor: pointer;
+	font-size: 12px;
+	margin-left: 2px;
+	opacity: 0.75;
+	transition: opacity 0.2s, transform 0.2s;
+}
+
+.ai-active-pill-chip .remove-chip-btn:hover {
+	opacity: 1;
+	transform: scale(1.2);
+	color: #ef4444;
+}
+
+/* 快捷预设芯片胶囊 */
 .preset-icon-group {
 	display: flex;
 	align-items: center;
 	gap: 6px;
+	flex-wrap: wrap;
 }
 
-.preset-icon-chip {
+.preset-pill-chip {
 	cursor: pointer;
-	padding: 2px 6px;
-	border-radius: 6px;
-	font-size: 13px;
+	padding: 4px 10px;
+	border-radius: 16px;
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--text-muted);
 	background-color: var(--bg-card);
 	border: 1px solid var(--border-color);
 	transition: all 0.2s;
 	user-select: none;
 }
 
-.preset-icon-chip:hover {
-	transform: scale(1.15);
+.preset-pill-chip:hover {
+	color: var(--primary-blue);
 	border-color: var(--primary-blue);
 	background-color: var(--active-sidebar);
 }
 
-.clear-input-btn {
-	color: var(--text-muted) !important;
-	padding: 0 4px !important;
-	font-size: 14px !important;
+.clear-input-icon {
+	color: var(--text-muted);
+	cursor: pointer;
+	font-size: 14px;
+	margin-left: 4px;
+	transition: color 0.2s;
 }
 
-.clear-input-btn:hover {
-	color: #ef4444 !important;
+.clear-input-icon:hover {
+	color: #ef4444;
 }
 
 .bar-right-actions {
@@ -5008,51 +5085,76 @@ export default {
 	align-items: center;
 }
 
-.stop-btn {
-	background: linear-gradient(135deg, #ef4444, #dc2626) !important;
-	border: none !important;
-	color: white !important;
-	font-weight: 500;
-	box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);
-	transition: all 0.3s ease;
-}
-
-.stop-btn:hover {
-	transform: translateY(-1px);
-	box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
-}
-
-.image-preview-badge {
+/* 完全对标截图 Run Ctrl ↵ 样式的组合按键 */
+.run-send-btn {
+	appearance: none;
+	-webkit-appearance: none;
+	outline: none;
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	background: linear-gradient(135deg, #0ea5e9, #3b82f6);
+	color: #ffffff;
+	padding: 6px 14px;
+	border-radius: 12px;
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
 	display: inline-flex;
 	align-items: center;
 	gap: 8px;
-	background-color: var(--bg-card);
-	border: 1px solid var(--primary-blue);
-	padding: 4px 10px;
-	border-radius: 8px;
-	width: fit-content;
+	box-shadow: 0 4px 12px rgba(14, 165, 233, 0.25);
+	transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+	user-select: none;
 }
 
-.thumb-img {
-	width: 28px;
-	height: 28px;
-	border-radius: 4px;
-	object-fit: cover;
+.run-send-btn:hover:not(:disabled) {
+	transform: translateY(-1px);
+	box-shadow: 0 6px 18px rgba(14, 165, 233, 0.45);
 }
 
-.thumb-name {
+.run-send-btn:disabled {
+	background: var(--border-color) !important;
+	color: var(--text-muted) !important;
+	border-color: transparent !important;
+	box-shadow: none !important;
+	cursor: not-allowed;
+	transform: none !important;
+}
+
+.kbd-shortcut {
+	font-size: 10px;
+	font-weight: 700;
+	background: rgba(0, 0, 0, 0.18);
+	padding: 2px 6px;
+	border-radius: 6px;
+	font-family: monospace;
+	letter-spacing: 0.5px;
+}
+
+.bp-wrapper.is-dark .kbd-shortcut {
+	background: rgba(255, 255, 255, 0.18);
+}
+
+.run-stop-btn {
+	appearance: none;
+	outline: none;
+	border: none;
+	background: linear-gradient(135deg, #ef4444, #dc2626);
+	color: #ffffff;
+	padding: 6px 14px;
+	border-radius: 12px;
 	font-size: 12px;
-	color: var(--text-p);
-	max-width: 160px;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
+	font-weight: 600;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+	transition: all 0.25s;
 }
 
-.remove-img-btn {
-	cursor: pointer;
-	color: #ef4444;
-	font-size: 14px;
+.run-stop-btn:hover {
+	transform: translateY(-1px);
+	box-shadow: 0 6px 16px rgba(239, 68, 68, 0.5);
 }
 
 /* AI 历史记录视图 */
@@ -6705,39 +6807,6 @@ export default {
 	color: var(--primary-blue);
 }
 
-.shared-users-popover-content {
-	padding: 6px;
-}
-
-.popover-sub-title {
-	font-size: 12px;
-	font-weight: 700;
-	color: var(--text-h1);
-	margin-bottom: 8px;
-	display: flex;
-	align-items: center;
-	gap: 6px;
-}
-
-.shared-user-tag-list {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 6px;
-	max-height: 160px;
-	overflow-y: auto;
-}
-
-.shared-user-badge {
-	font-size: 11px;
-	background-color: var(--active-sidebar);
-	color: var(--primary-blue);
-	padding: 2px 8px;
-	border-radius: 12px;
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-}
-
 .editors-trigger {
 	display: inline-flex;
 	align-items: center;
@@ -6774,37 +6843,6 @@ export default {
 	padding: 1px 6px;
 	border-radius: 4px;
 	border: 1px solid rgba(14, 165, 233, 0.2);
-}
-
-.editors-popover-content {
-	padding: 6px 4px;
-}
-
-.editors-title {
-	font-size: 12px;
-	font-weight: 700;
-	color: var(--text-h1);
-	margin-bottom: 8px;
-	display: flex;
-	align-items: center;
-	gap: 6px;
-}
-
-.editors-tag-list {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 6px;
-}
-
-.editor-chip {
-	font-size: 11px;
-	background-color: var(--active-sidebar);
-	color: var(--primary-blue);
-	padding: 2px 8px;
-	border-radius: 12px;
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
 }
 
 .solution-header {
@@ -7457,5 +7495,219 @@ button.code-copy-btn.copied,
 	.ai-floating-fab { right: 16px; bottom: 115px; width: 42px; height: 42px; }
 	.undo-toast { width: 90% !important; left: 5% !important; margin-left: 0 !important; top: 64px !important; }
 	.preview-iframe-container { height: 380px; }
+}
+</style>
+
+<!-- =========================================================================
+     全局 Element UI 浮动组件 (Popover / Select / Dropdown / ContextMenu / MessageBox) 终极双主题修复
+     (非 scoped 样式，强力重置挂载在 document.body 节点下的所有弹出层)
+     ========================================================================= -->
+<style>
+/* ---------------- 1. 暗黑模式 Poppers (el-popover, el-dropdown-menu, el-select-dropdown) ---------------- */
+.custom-dark-popover,
+.custom-dark-select,
+.custom-dark-popover.el-dropdown-menu,
+.custom-dark-popover.el-popover,
+.custom-dark-select.el-select-dropdown,
+.el-dropdown-menu.custom-dark-popover,
+.el-popover.custom-dark-popover,
+.el-popper.custom-dark-popover {
+	background-color: #18181b !important;
+	border: 1px solid #27272a !important;
+	color: #f8fafc !important;
+	box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.6) !important;
+	padding: 6px !important;
+	border-radius: 10px !important;
+}
+
+/* 气泡指示小箭头颜色完美融合 */
+.custom-dark-popover .popper__arrow,
+.custom-dark-popover .popper__arrow::after,
+.custom-dark-select .popper__arrow,
+.custom-dark-select .popper__arrow::after,
+.el-dropdown-menu.custom-dark-popover .popper__arrow,
+.el-dropdown-menu.custom-dark-popover .popper__arrow::after {
+	border-bottom-color: #18181b !important;
+	border-top-color: #18181b !important;
+	border-left-color: #18181b !important;
+	border-right-color: #18181b !important;
+}
+
+.custom-dark-popover.el-popper[x-placement^=bottom] .popper__arrow,
+.custom-dark-popover.el-popper[x-placement^=bottom] .popper__arrow::after {
+	border-bottom-color: #18181b !important;
+}
+
+.custom-dark-popover.el-popper[x-placement^=top] .popper__arrow,
+.custom-dark-popover.el-popper[x-placement^=top] .popper__arrow::after {
+	border-top-color: #18181b !important;
+}
+
+/* Select 下拉选择框列表项 (el-select) */
+.custom-dark-select .el-select-dropdown__item {
+	color: #cbd5e1 !important;
+	background-color: transparent !important;
+	border-radius: 6px !important;
+	margin: 2px 4px !important;
+	font-size: 13px !important;
+	height: 34px !important;
+	line-height: 34px !important;
+}
+
+.custom-dark-select .el-select-dropdown__item.hover,
+.custom-dark-select .el-select-dropdown__item:hover {
+	background-color: #27272a !important;
+	color: #38bdf8 !important;
+}
+
+.custom-dark-select .el-select-dropdown__item.selected {
+	color: #38bdf8 !important;
+	font-weight: 700 !important;
+	background-color: rgba(14, 165, 233, 0.15) !important;
+}
+
+/* ---------------- 2. 浅色模式 Poppers ---------------- */
+.custom-light-popover,
+.custom-light-select,
+.custom-light-popover.el-dropdown-menu,
+.custom-light-popover.el-popover,
+.custom-light-select.el-select-dropdown,
+.el-dropdown-menu.custom-light-popover {
+	background-color: #ffffff !important;
+	border: 1px solid #e2e8f0 !important;
+	color: #0f172a !important;
+	box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1) !important;
+	padding: 6px !important;
+	border-radius: 10px !important;
+}
+
+.custom-light-select .el-select-dropdown__item {
+	color: #334155 !important;
+	background-color: transparent !important;
+	border-radius: 6px !important;
+	margin: 2px 4px !important;
+	font-size: 13px !important;
+	height: 34px !important;
+	line-height: 34px !important;
+}
+
+.custom-light-select .el-select-dropdown__item.hover,
+.custom-light-select .el-select-dropdown__item:hover {
+	background-color: #f1f5f9 !important;
+	color: #0ea5e9 !important;
+}
+
+.custom-light-select .el-select-dropdown__item.selected {
+	color: #0ea5e9 !important;
+	font-weight: 700 !important;
+	background-color: #e0f2fe !important;
+}
+
+/* ---------------- 3. 自定义操作菜单列表 (Custom Action Menu List) ---------------- */
+.custom-dark-popover .action-menu-list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.custom-dark-popover .action-menu-list .action-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	font-size: 13px;
+	color: #cbd5e1;
+	cursor: pointer;
+	border-radius: 6px;
+	transition: all 0.2s;
+	user-select: none;
+}
+
+.custom-dark-popover .action-menu-list .action-item:hover {
+	background-color: #27272a;
+	color: #38bdf8;
+}
+
+.custom-dark-popover .action-menu-list .action-item.danger {
+	color: #f87171;
+}
+
+.custom-dark-popover .action-menu-list .action-item.danger:hover {
+	background-color: rgba(239, 68, 68, 0.18);
+	color: #ef4444;
+}
+
+.custom-dark-popover .action-menu-list .action-divider {
+	height: 1px;
+	margin: 4px 0;
+	background-color: #27272a;
+}
+
+.custom-light-popover .action-menu-list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.custom-light-popover .action-menu-list .action-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	font-size: 13px;
+	color: #334155;
+	cursor: pointer;
+	border-radius: 6px;
+	transition: all 0.2s;
+	user-select: none;
+}
+
+.custom-light-popover .action-menu-list .action-item:hover {
+	background-color: #f1f5f9;
+	color: #0ea5e9;
+}
+
+.custom-light-popover .action-menu-list .action-item.danger {
+	color: #ef4444;
+}
+
+.custom-light-popover .action-menu-list .action-item.danger:hover {
+	background-color: rgba(239, 68, 68, 0.1);
+	color: #dc2626;
+}
+
+.custom-light-popover .action-menu-list .action-divider {
+	height: 1px;
+	margin: 4px 0;
+	background-color: #e2e8f0;
+}
+
+/* 暗黑气泡内部文本/标题通用颜色接管 */
+.custom-dark-popover .shared-users-popover-content .popover-sub-title,
+.custom-dark-popover .marker-popover-content .marker-popover-title,
+.custom-dark-popover .editors-popover-content .editors-title {
+	color: #f8fafc !important;
+}
+
+.custom-dark-popover .marker-popover-content .marker-popover-summary {
+	color: #94a3b8 !important;
+}
+
+/* ---------------- 4. 系统退出确认 MessageBox 弹窗 ---------------- */
+.custom-logout-confirm {
+	background-color: #18181b !important;
+	border: 1px solid #27272a !important;
+	border-radius: 12px !important;
+}
+
+.custom-logout-confirm .el-message-box__title,
+.custom-logout-confirm .el-message-box__message {
+	color: #f8fafc !important;
+}
+
+.custom-logout-confirm .el-message-box__btns .el-button--default {
+	background-color: #27272a !important;
+	border-color: #3f3f46 !important;
+	color: #f8fafc !important;
 }
 </style>
