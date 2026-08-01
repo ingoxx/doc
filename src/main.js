@@ -39,6 +39,8 @@ import { DropdownMenu} from 'element-ui'
 import { DropdownItem} from 'element-ui'
 import { Radio } from 'element-ui'
 import { ButtonGroup } from 'element-ui'
+import { Collapse } from 'element-ui'
+import { CollapseItem } from 'element-ui'
 
 Vue.use(Table)
 Vue.use(TableColumn)
@@ -72,6 +74,9 @@ Vue.use(DropdownMenu)
 Vue.use(DropdownItem)
 Vue.use(Radio)
 Vue.use(ButtonGroup)
+Vue.use(Collapse)
+Vue.use(CollapseItem)
+
 Vue.config.productionTip = false
 
 

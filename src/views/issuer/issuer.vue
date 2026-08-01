@@ -6,6 +6,21 @@
 		<input type="file" ref="hiddenFileInput" style="display: none" @change="handleFileUpload" />
 		<!-- 全局隐藏的文档导入 Input -->
 		<input type="file" ref="importFileInput" accept=".md,.txt,.log" style="display: none" @change="handleImportFileSelect" />
+		<!-- 全局 AI 图片上传 Input -->
+		<input type="file" ref="aiImageFileInput" accept="image/*" style="display: none" @change="handleAiImageSelect" />
+
+		<!-- ================= 划选文字 浮动「问 AI」微按钮 ================= -->
+		<transition name="el-fade-in-linear">
+			<div 
+				v-show="aiTooltip.visible" 
+				class="ai-selection-tooltip" 
+				:style="{ top: aiTooltip.top + 'px', left: aiTooltip.left + 'px' }"
+				@mousedown.prevent.stop
+				@click="handleAskAiClick"
+			>
+				<i class="el-icon-cpu"></i> 问 AI
+			</div>
+		</transition>
 
 		<!-- ================= 1. 毛玻璃 Header ================= -->
 		<header class="bp-header">
@@ -581,6 +596,13 @@
 
 				</div>
 
+				<!-- ================= 页面右侧浮动 AI 助手入口悬浮球 ================= -->
+				<div class="ai-floating-fab" @click="openAiDialogFromFab" title="AI 智能排错解析助手与历史问答">
+					<div class="fab-glow-ring"></div>
+					<div class="fab-icon"><i class="el-icon-cpu"></i></div>
+					<span class="fab-history-badge" v-if="aiHistory.length > 0">{{ aiHistory.length }}/10</span>
+				</div>
+
 				<!-- ================= 快捷一键置顶 / 置底悬浮工具栏 ================= -->
 				<transition name="toast-slide-up">
 					<div class="quick-scroll-widget" v-show="showScrollButtons">
@@ -597,6 +619,243 @@
 		</div>
 
 		<!-- ================= 3. 弹窗区 ================= -->
+
+		<!-- AI 智能问答与历史解析弹窗 (精炼升华版) -->
+		<el-dialog 
+			v-dialogDrag 
+			:visible.sync="aiDialog.visible" 
+			:width="dialogWidth" 
+			:close-on-click-modal="false" 
+			custom-class="modern-dialog ai-dialog-modal"
+			@closed="handleAiDialogClose"
+		>
+			<div slot="title" class="ai-dialog-custom-header">
+				<div class="header-title-left">
+					<div class="ai-glow-icon"><i class="el-icon-cpu"></i></div>
+					<span class="title-text">AI 排错助手</span>
+					<span class="ai-model-tag">{{ aiForm.model || 'gemini-1.5-flash' }}</span>
+				</div>
+				<div class="header-actions-right">
+					<!-- 仿 Models/Agents 架构的全新胶囊 Pill 切换器 -->
+					<div class="ai-pill-switch">
+						<div class="pill-item" :class="{ 'active': aiActiveTab === 'chat' }" @click="aiActiveTab = 'chat'">
+							<i class="el-icon-chat-dot-square"></i> 智能追问
+						</div>
+						<div class="pill-item" :class="{ 'active': aiActiveTab === 'history' }" @click="aiActiveTab = 'history'">
+							<i class="el-icon-notebook-2"></i> 历史记录 ({{ aiHistory.length }}/10)
+						</div>
+					</div>
+
+					<el-tooltip :content="aiDialog.showSettings ? '隐藏配置' : '模型与 Key 配置'" placement="top">
+						<el-button size="mini" type="text" class="ai-config-toggle-btn" @click="aiDialog.showSettings = !aiDialog.showSettings">
+							<i class="el-icon-setting"></i>
+						</el-button>
+					</el-tooltip>
+				</div>
+			</div>
+
+			<!-- AI 模型与 API Key 设置面板 -->
+			<transition name="el-zoom-in-top">
+				<div v-show="aiDialog.showSettings || !aiForm.apiKey" class="ai-settings-panel">
+					<div class="settings-title">
+						<i class="el-icon-s-tools"></i> Google Gemini 服务接口配置
+						<span class="settings-tip">(已加密保存于本地浏览器)</span>
+					</div>
+					<el-form size="small" label-position="top">
+						<el-form-item label="Gemini API Key">
+							<el-input class="modern-el-input" v-model="aiForm.apiKey" type="password" show-password placeholder="请输入您的 API Key (如 AIzaSy...)"></el-input>
+						</el-form-item>
+						<el-form-item label="AI 模型 Model">
+							<el-input class="modern-el-input" v-model="aiForm.model" placeholder="默认: gemini-1.5-flash，也可填写 gemini-3.6-flash 等"></el-input>
+						</el-form-item>
+						<el-form-item label="提问 Prompt 预设前缀">
+							<el-input class="modern-el-input" v-model="aiForm.customPrompt" placeholder="例如: 请帮我分析以下报错/文档，并给出定位思路与解决方案："></el-input>
+						</el-form-item>
+						<div style="text-align: right; margin-top: 12px;">
+							<el-button size="mini" type="primary" class="primary-gradient-btn" icon="el-icon-check" @click="saveAiSettings">保 存 配 置</el-button>
+						</div>
+					</el-form>
+				</div>
+			</transition>
+
+			<!-- 视图 1：AI 智能提问 / 对话 / 追问视图 -->
+			<div v-show="aiActiveTab === 'chat'" class="ai-chat-view-container">
+				<!-- 上下文选中文本预览 -->
+				<div v-if="aiDialog.queryText" class="ai-selected-preview">
+					<div class="preview-label">
+						<i class="el-icon-document-checked"></i> 当前划选解析上下文：
+					</div>
+					<div class="preview-text">{{ aiDialog.queryText }}</div>
+				</div>
+
+				<!-- AI 回复流式展示卡片 -->
+				<div class="ai-response-card" :class="{ 'is-streaming': aiDialog.isStreaming }">
+					<div class="response-card-header">
+						<div class="header-status">
+							<span class="status-indicator" :class="{ 'pulse-active': aiDialog.isStreaming }"></span>
+							<span class="status-text">{{ aiDialog.isStreaming ? 'AI 正在实时思考生成回答...' : (aiDialog.responseText ? 'AI 解析完成' : 'AI 助手就绪') }}</span>
+						</div>
+						<div class="header-actions" v-if="aiDialog.responseText && !aiDialog.isStreaming">
+							<!-- 复制完整回答下拉框（采用与代码块复制按钮一致的样式风格） -->
+							<el-dropdown trigger="click" @command="handleAiCopyCommand">
+								<button class="ai-code-copy-btn" type="button" title="点击选择复制格式">
+									<i class="el-icon-document-copy"></i> 复制回答 <i class="el-icon-arrow-down el-icon--right"></i>
+								</button>
+								<el-dropdown-menu slot="dropdown" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
+									<el-dropdown-item command="raw">
+										<i class="el-icon-document-copy"></i> 复制 MD 格式
+									</el-dropdown-item>
+									<el-dropdown-item command="plain">
+										<i class="el-icon-tickets"></i> 复制纯文本格式
+									</el-dropdown-item>
+								</el-dropdown-menu>
+							</el-dropdown>
+						</div>
+					</div>
+
+					<div class="response-card-body" ref="aiResponseScrollContainer">
+						<div v-if="aiDialog.responseText" class="markdown-body ai-markdown-content" v-html="renderMarkdown(aiDialog.responseText)"></div>
+						<span v-if="aiDialog.isStreaming" class="streaming-cursor">▌</span>
+
+						<div v-if="!aiDialog.responseText && !aiDialog.isStreaming" class="ai-placeholder-text">
+							<p v-if="!aiForm.apiKey" class="warning-text"><i class="el-icon-warning"></i> 请先在右上角配置 API Key 即可启动智能问答</p>
+							<p v-else><i class="el-icon-chat-line-square"></i> 在下方输入追问内容或上传报错图片，点击发送即可与 AI 对话</p>
+						</div>
+					</div>
+				</div>
+
+				<!-- 底部交互式输入追问框 & 上传图片/工具单排栏 -->
+				<div class="ai-input-composer">
+					<!-- 图片预览缩略图 -->
+					<transition name="el-zoom-in-top">
+						<div v-if="aiSelectedImage" class="image-preview-badge">
+							<img :src="aiSelectedImage.previewUrl" class="thumb-img" />
+							<span class="thumb-name">{{ aiSelectedImage.name }}</span>
+							<i class="el-icon-close remove-img-btn" @click="removeSelectedAiImage" title="移除图片"></i>
+						</div>
+					</transition>
+
+					<div class="composer-toolbar">
+						<el-input 
+							type="textarea" 
+							:rows="3" 
+							v-model="aiInputQuery" 
+							placeholder="输入追问、代码或报错 (Shift+Enter 换行，Enter 发送)..." 
+							class="modern-el-input composer-textarea"
+							@keyup.enter.native="handleComposerEnter"
+						></el-input>
+					</div>
+
+					<!-- 底部一排单行工具栏（图标化与发送/停止按钮并排） -->
+					<div class="composer-single-bar">
+						<div class="bar-left-tools">
+							<!-- 识图/上传图片按钮 (Icon 图标化) -->
+							<el-tooltip :content="aiSelectedImage ? '更换分析图片' : '上传图片/截图分析'" placement="top">
+								<el-button size="mini" class="icon-tool-btn" :class="{ 'has-file': !!aiSelectedImage }" icon="el-icon-picture-outline" @click="triggerAiImageUpload"></el-button>
+							</el-tooltip>
+
+							<div class="tool-divider"></div>
+
+							<!-- 快捷场景预设 Icon 芯片 -->
+							<div class="preset-icon-group">
+								<el-tooltip content="🎯 详细排错" placement="top">
+									<span class="preset-icon-chip" @click="applyPromptPreset('详细排错分析')">🎯</span>
+								</el-tooltip>
+								<el-tooltip content="💡 代码优化" placement="top">
+									<span class="preset-icon-chip" @click="applyPromptPreset('代码优化与修复')">💡</span>
+								</el-tooltip>
+								<el-tooltip content="📝 简明总结" placement="top">
+									<span class="preset-icon-chip" @click="applyPromptPreset('简明原因总结')">📝</span>
+								</el-tooltip>
+								<el-tooltip content="🌐 日志翻译" placement="top">
+									<span class="preset-icon-chip" @click="applyPromptPreset('英文日志翻译')">🌐</span>
+								</el-tooltip>
+							</div>
+
+							<div class="tool-divider" v-if="aiInputQuery"></div>
+
+							<!-- 一键清空输入框文本Icon按钮 -->
+							<el-tooltip v-if="aiInputQuery" content="清空输入内容" placement="top">
+								<el-button size="mini" type="text" class="clear-input-btn" icon="el-icon-delete" @click="aiInputQuery = ''"></el-button>
+							</el-tooltip>
+						</div>
+
+						<div class="bar-right-actions">
+							<!-- 未流式生成时展示发送按钮，带禁用校验 -->
+							<el-button 
+								v-if="!aiDialog.isStreaming"
+								size="small" 
+								type="primary" 
+								class="primary-gradient-btn send-btn" 
+								icon="el-icon-s-promotion" 
+								:disabled="!canSendAiQuery"
+								@click="sendAiQueryStream(false)">
+								发送
+							</el-button>
+
+							<!-- 流式生成中展示停止回复按钮 -->
+							<el-button 
+								v-else
+								size="small" 
+								type="danger" 
+								class="stop-btn" 
+								icon="el-icon-video-pause" 
+								@click="abortAiStream">
+								停止回复
+							</el-button>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- 视图 2：AI 历史提问与回复列表 (最多保存 10 条 FIFO) -->
+			<div v-show="aiActiveTab === 'history'" class="ai-history-view-container">
+				<div class="history-list-header">
+					<span class="history-count-title"><i class="el-icon-history"></i> 本地问答历史 ({{ aiHistory.length }}/10 条)</span>
+					<el-button v-if="aiHistory.length > 0" size="mini" type="text" class="danger-text-btn" icon="el-icon-delete" @click="clearAllAiHistory">清空全部历史</el-button>
+				</div>
+
+				<div class="history-card-list">
+					<div v-if="aiHistory.length === 0" class="history-empty-hint">
+						<i class="el-icon-notebook-2"></i>
+						<span>暂无保存的 AI 历史提问记录</span>
+					</div>
+
+					<div 
+						v-for="(item, idx) in aiHistory" 
+						:key="item.id || idx" 
+						class="history-item-card"
+						:class="{ 'is-active-history': currentActiveHistoryId === item.id }"
+					>
+						<div class="history-item-top">
+							<div class="history-title-group">
+								<span class="history-index-tag">#{{ idx + 1 }}</span>
+								<span class="history-time">{{ item.timestamp }}</span>
+							</div>
+							<div class="history-actions-group">
+								<el-button size="mini" type="text" icon="el-icon-right" @click="loadHistoryToChat(item)">查看/载入追问</el-button>
+								<el-button size="mini" type="text" class="danger-text-btn" icon="el-icon-close" @click="deleteSingleHistory(item.id)"></el-button>
+							</div>
+						</div>
+
+						<div class="history-query-snippet">
+							<strong>问：</strong> {{ item.queryText }}
+							<span v-if="item.image" class="history-image-tag"><i class="el-icon-picture-outline"></i> 含图片</span>
+						</div>
+
+						<div class="history-response-snippet">
+							<strong>答：</strong> {{ getPlainSummary(item.responseText) }}
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<div slot="footer" class="ai-dialog-footer">
+				<div class="footer-left">
+					<span v-if="aiDialog.isStreaming" class="streaming-tip"><i class="el-icon-loading"></i> AI 数据流实时生成中...</span>
+				</div>
+			</div>
+		</el-dialog>
 
 		<!-- 全局附件右键快捷上下文菜单 Popup -->
 		<div 
@@ -1086,6 +1345,13 @@ marked.use({
 
 const getNowDate = () => new Date().toISOString().split('T')[0];
 
+const getFormattedDateTime = () => {
+	const now = new Date();
+	const date = now.toISOString().split('T')[0];
+	const time = now.toTimeString().split(' ')[0].substring(0, 5);
+	return `${date} ${time}`;
+};
+
 export default {
 	name: 'TroubleRecord',
 	directives: {
@@ -1139,6 +1405,16 @@ export default {
 	data() {
 		const savedActiveCatId = localStorage.getItem('trouble_docs_active_cat_id');
 		const savedCurrentPage = localStorage.getItem('trouble_docs_current_page');
+
+		let initialAiHistory = [];
+		try {
+			const historyStr = localStorage.getItem('trouble_docs_ai_history');
+			if (historyStr) {
+				initialAiHistory = JSON.parse(historyStr);
+			}
+		} catch (e) {
+			console.error('parse ai history error:', e);
+		}
 
 		return {
 			isDark: true,
@@ -1206,6 +1482,32 @@ export default {
 			categories: [],
 			problems: [],
 
+			// ======== 划选文字 AI 提问、追问与历史记录数据 ========
+			aiTooltip: {
+				visible: false,
+				top: 0,
+				left: 0,
+				selectedText: ''
+			},
+			aiActiveTab: 'chat', // 'chat' | 'history'
+			aiForm: {
+				apiKey: localStorage.getItem('ai_api_key') || '',
+				model: localStorage.getItem('ai_model') || 'gemini-1.5-flash',
+				customPrompt: localStorage.getItem('ai_custom_prompt') || '请帮我分析以下报错/文档，并给出具体的排查定位思路与解决方案：'
+			},
+			aiDialog: {
+				visible: false,
+				isStreaming: false,
+				showSettings: false,
+				queryText: '',
+				responseText: ''
+			},
+			aiInputQuery: '', // 手动追问输入框文本
+			aiSelectedImage: null, // { name: '', mimeType: '', base64: '', previewUrl: '' }
+			aiHistory: Array.isArray(initialAiHistory) ? initialAiHistory : [],
+			currentActiveHistoryId: null,
+			aiAbortController: null,
+
 			// ======== 附件右键快捷菜单状态 ========
 			contextMenuVisible: false,
 			contextMenuFile: null,
@@ -1271,8 +1573,15 @@ export default {
 		}
 	},
 	computed: {
+		// 计算 AI 提问是否具备发送条件（有文字输入或已选择图片）
+		canSendAiQuery() {
+			const hasText = !!(this.aiInputQuery && this.aiInputQuery.trim().length > 0);
+			const hasImg = !!this.aiSelectedImage;
+			return hasText || hasImg;
+		},
+
 		dialogWidth() {
-			return this.isMobile ? '92%' : '700px';
+			return this.isMobile ? '94%' : '750px';
 		},
 		smallDialogWidth() {
 			return this.isMobile ? '90%' : '440px';
@@ -1414,26 +1723,412 @@ export default {
 		window.addEventListener('click', this.closeContextMenu);
 		window.addEventListener('click', this.handleCodeBlockCopy, true);
 		window.addEventListener('scroll', this.closeContextMenu, true);
+
+		// 全局监听划选文本事件
+		document.addEventListener('mouseup', this.handleTextSelection);
+		document.addEventListener('mousedown', this.handleDocumentMouseDown);
 	},
 	beforeDestroy() {
 		window.removeEventListener('resize', this.handleResize);
 		window.removeEventListener('click', this.closeContextMenu);
 		window.removeEventListener('click', this.handleCodeBlockCopy, true);
 		window.removeEventListener('scroll', this.closeContextMenu, true);
+
+		document.removeEventListener('mouseup', this.handleTextSelection);
+		document.removeEventListener('mousedown', this.handleDocumentMouseDown);
+
 		if (this.undoTimer) clearInterval(this.undoTimer);
 		if (this.toastTimer) clearTimeout(this.toastTimer);
 		if (this.highlightTimer) clearTimeout(this.highlightTimer);
 		if (this.undoData) {
 			this.commitPendingDelete();
 		}
+		this.abortAiStream();
 		this.resetPreview();
 	},
 	async created() {
 		await this.fetchData();
 	},
 	methods: {
+		// ======== 复制 AI 完整回答（支持 MD / 纯文本 两种选择） ========
+		handleAiCopyCommand(command) {
+			if (!this.aiDialog.responseText) {
+				this.showToast('暂无 AI 解答内容');
+				return;
+			}
+			if (command === 'raw') {
+				this.copySolution(this.aiDialog.responseText, '已复制 AI 回答 (Markdown 格式)');
+			} else if (command === 'plain') {
+				const plainText = this.convertMarkdownToPlainText(this.aiDialog.responseText);
+				this.copySolution(plainText, '已复制 AI 回答 (纯文本格式)');
+			}
+		},
+
+		// ======== 浮动 AI 悬浮球 & 划选提问核心逻辑 ========
+		openAiDialogFromFab() {
+			this.aiActiveTab = this.aiHistory.length > 0 ? 'history' : 'chat';
+			this.aiDialog.visible = true;
+		},
+
+		handleDocumentMouseDown(e) {
+			if (e.target && e.target.closest && (e.target.closest('.ai-selection-tooltip') || e.target.closest('.el-dialog') || e.target.closest('.ai-floating-fab'))) {
+				return;
+			}
+			this.aiTooltip.visible = false;
+		},
+
+		handleTextSelection(e) {
+			if (e.target && e.target.closest && (e.target.closest('.ai-selection-tooltip') || e.target.closest('.el-dialog') || e.target.closest('.ai-floating-fab'))) {
+				return;
+			}
+
+			setTimeout(() => {
+				const selection = window.getSelection();
+				if (!selection) return;
+
+				const selectedText = selection.toString().trim();
+				if (!selectedText || selectedText.length < 2) {
+					this.aiTooltip.visible = false;
+					return;
+				}
+
+				if (selection.rangeCount > 0) {
+					const range = selection.getRangeAt(0);
+					const rect = range.getBoundingClientRect();
+
+					if (rect.width === 0 && rect.height === 0) {
+						this.aiTooltip.visible = false;
+						return;
+					}
+
+					this.aiTooltip.selectedText = selectedText;
+					this.aiTooltip.top = Math.max(10, rect.top + window.scrollY - 38);
+					this.aiTooltip.left = rect.left + window.scrollX + (rect.width / 2) - 40;
+					this.aiTooltip.visible = true;
+				}
+			}, 20);
+		},
+
+		handleAskAiClick() {
+			const query = this.aiTooltip.selectedText;
+			this.aiTooltip.visible = false;
+			if (!query) return;
+
+			this.aiDialog.queryText = query;
+			this.aiDialog.responseText = '';
+			this.aiActiveTab = 'chat';
+			this.currentActiveHistoryId = Date.now();
+			this.aiDialog.visible = true;
+
+			if (!this.aiForm.apiKey) {
+				this.aiDialog.showSettings = true;
+				this.showToast('请配置 Gemini API Key 以开启流式智能排错');
+			} else {
+				this.sendAiQueryStream(true);
+			}
+		},
+
+		// ======== AI 图片上传多模态（Multimodal Vision）========
+		triggerAiImageUpload() {
+			this.$refs.aiImageFileInput.click();
+		},
+
+		handleAiImageSelect(e) {
+			const file = e.target.files[0];
+			if (!file) return;
+
+			if (!file.type.startsWith('image/')) {
+				this.showToast('请选择有效的图片文件');
+				e.target.value = '';
+				return;
+			}
+
+			if (file.size > 10 * 1024 * 1024) {
+				this.showToast('图片大小限制在 10MB 以内');
+				e.target.value = '';
+				return;
+			}
+
+			const reader = new FileReader();
+			reader.onload = (event) => {
+				const dataUrl = event.target.result || '';
+				const mimeType = file.type || 'image/png';
+				const rawBase64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+
+				this.aiSelectedImage = {
+					name: file.name,
+					mimeType: mimeType,
+					base64: rawBase64,
+					previewUrl: dataUrl
+				};
+				this.showToast(`图片【${file.name}】已导入，将用于图文联合分析`);
+				e.target.value = '';
+			};
+			reader.readAsDataURL(file);
+		},
+
+		removeSelectedAiImage() {
+			this.aiSelectedImage = null;
+			if (this.$refs.aiImageFileInput) {
+				this.$refs.aiImageFileInput.value = '';
+			}
+		},
+
+		handleComposerEnter(e) {
+			if (!e.shiftKey) {
+				e.preventDefault();
+				if (!this.canSendAiQuery) {
+					this.showToast('请输入追问内容或选择分析图片');
+					return;
+				}
+				this.sendAiQueryStream(false);
+			}
+		},
+
+		applyPromptPreset(type) {
+			if (type === '详细排错分析') {
+				this.aiForm.customPrompt = '请详细分析以下报错信息/排错日志，给出底层根本原因与逐步解决步骤：';
+			} else if (type === '代码优化与修复') {
+				this.aiForm.customPrompt = '请检查并优化以下代码，列出潜藏风险并提供修复后的完整代码块：';
+			} else if (type === '简明原因总结') {
+				this.aiForm.customPrompt = '请用最简明扼要的 3 句话总结以下文档的核心结论与解决要点：';
+			} else if (type === '英文日志翻译') {
+				this.aiForm.customPrompt = '请将以下英文排错日志/文档翻译为中文，并对专业技术词汇进行简要释义：';
+			}
+			this.showToast(`已应用预设：${type}`);
+		},
+
+		saveAiSettings() {
+			if (!this.aiForm.apiKey.trim()) {
+				this.showToast('请输入有效的 API Key');
+				return;
+			}
+
+			localStorage.setItem('ai_api_key', this.aiForm.apiKey.trim());
+			localStorage.setItem('ai_model', this.aiForm.model.trim() || 'gemini-1.5-flash');
+			localStorage.setItem('ai_custom_prompt', this.aiForm.customPrompt.trim());
+
+			this.aiDialog.showSettings = false;
+			this.showToast('AI 配置已成功持久化保存！');
+
+			if ((this.aiDialog.queryText || this.aiInputQuery) && !this.aiDialog.responseText) {
+				this.sendAiQueryStream(false);
+			}
+		},
+
+		// ======== AI 历史记录持久化保存（最多 10 条 FIFO）========
+		saveAiHistoryRecord(record) {
+			if (!record || !record.queryText || !record.responseText) return;
+
+			let historyList = [...this.aiHistory];
+			const existingIndex = historyList.findIndex(item => item.id === record.id);
+
+			if (existingIndex !== -1) {
+				historyList.splice(existingIndex, 1, record);
+			} else {
+				historyList.unshift(record);
+			}
+
+			// FIFO 淘汰原则：最多保留 10 条最新问答
+			if (historyList.length > 10) {
+				historyList = historyList.slice(0, 10);
+			}
+
+			this.aiHistory = historyList;
+			localStorage.setItem('trouble_docs_ai_history', JSON.stringify(historyList));
+		},
+
+		loadHistoryToChat(item) {
+			if (!item) return;
+			this.aiDialog.queryText = item.queryText;
+			this.aiDialog.responseText = item.responseText;
+			this.aiSelectedImage = item.image || null;
+			this.currentActiveHistoryId = item.id;
+			this.aiActiveTab = 'chat';
+			this.scrollAiContentToBottom();
+		},
+
+		deleteSingleHistory(id) {
+			this.aiHistory = this.aiHistory.filter(item => item.id !== id);
+			localStorage.setItem('trouble_docs_ai_history', JSON.stringify(this.aiHistory));
+			this.showToast('该条历史问答已删除');
+		},
+
+		clearAllAiHistory() {
+			MessageBox.confirm('确定要清空全部 10 条 AI 问答历史吗?', '清空提示', {
+				confirmButtonText: '确定清空',
+				cancelButtonText: '取消',
+				type: 'warning'
+			}).then(() => {
+				this.aiHistory = [];
+				localStorage.removeItem('trouble_docs_ai_history');
+				this.showToast('已清空全部历史记录');
+			}).catch(() => {});
+		},
+
+		abortAiStream() {
+			if (this.aiAbortController) {
+				this.aiAbortController.abort();
+				this.aiAbortController = null;
+			}
+			this.aiDialog.isStreaming = false;
+			this.showToast('已终止 AI 生成');
+		},
+
+		handleAiDialogClose() {
+			this.abortAiStream();
+		},
+
+		scrollAiContentToBottom() {
+			this.$nextTick(() => {
+				const container = this.$refs.aiResponseScrollContainer;
+				if (container) {
+					container.scrollTop = container.scrollHeight;
+				}
+			});
+		},
+
+		/**
+		 * 核心：Gemini API SSE 流式输出推流与多模态识图发送
+		 */
+		async sendAiQueryStream(isNewSelection = false) {
+			if (!this.aiForm.apiKey.trim()) {
+				this.aiDialog.showSettings = true;
+				this.showToast('请先填写 API Key');
+				return;
+			}
+
+			let activeQuery = '';
+			if (isNewSelection) {
+				activeQuery = this.aiDialog.queryText;
+			} else if (this.aiInputQuery.trim()) {
+				activeQuery = this.aiInputQuery.trim();
+				this.aiDialog.queryText = activeQuery;
+			} else {
+				activeQuery = this.aiDialog.queryText;
+			}
+
+			if (!activeQuery && !this.aiSelectedImage) {
+				this.showToast('请输入追问内容或选择分析图片');
+				return;
+			}
+
+			this.abortAiStream();
+			this.aiAbortController = new AbortController();
+
+			this.aiDialog.isStreaming = true;
+			this.aiDialog.responseText = '';
+			this.aiActiveTab = 'chat';
+
+			const recordId = this.currentActiveHistoryId || Date.now();
+			this.currentActiveHistoryId = recordId;
+
+			const modelName = this.aiForm.model.trim() || 'gemini-1.5-flash';
+			const apiKey = this.aiForm.apiKey.trim();
+			const promptPrefix = this.aiForm.customPrompt || '请帮我分析以下报错/文档，并给出定位思路与解决方案：';
+
+			const fullPromptText = `${promptPrefix}\n\n${activeQuery}`;
+
+			// 构建 Gemini 请求的 parts (支持文本 + 图片 multimodal)
+			const partsPayload = [
+				{ text: fullPromptText }
+			];
+
+			if (this.aiSelectedImage && this.aiSelectedImage.base64) {
+				partsPayload.push({
+					inlineData: {
+						mimeType: this.aiSelectedImage.mimeType || 'image/png',
+						data: this.aiSelectedImage.base64
+					}
+				});
+			}
+
+			const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?alt=sse&key=${apiKey}`;
+
+			const payload = {
+				contents: [{
+					parts: partsPayload
+				}]
+			};
+
+			try {
+				const response = await fetch(endpoint, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify(payload),
+					signal: this.aiAbortController.signal
+				});
+
+				if (!response.ok) {
+					const errorData = await response.json().catch(() => ({}));
+					throw new Error(errorData?.error?.message || `HTTP ${response.status}`);
+				}
+
+				if (!response.body) {
+					throw new Error('浏览器未返回可读数据流');
+				}
+
+				const reader = response.body.getReader();
+				const decoder = new TextDecoder('utf-8');
+				let buffer = '';
+
+				while (true) {
+					const { done, value } = await reader.read();
+					if (done) break;
+
+					buffer += decoder.decode(value, { stream: true });
+					const lines = buffer.split('\n');
+					buffer = lines.pop() || '';
+
+					for (const line of lines) {
+						const trimmed = line.trim();
+						if (trimmed.startsWith('data: ')) {
+							const jsonStr = trimmed.replace(/^data:\s*/, '');
+							if (jsonStr === '[DONE]') continue;
+
+							try {
+								const parsed = JSON.parse(jsonStr);
+								const chunkText = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
+								if (chunkText) {
+									this.aiDialog.responseText += chunkText;
+									this.scrollAiContentToBottom();
+								}
+							} catch (e) {
+								// 解析部分 JSON 片段异常容错
+							}
+						}
+					}
+				}
+
+				if (!this.aiDialog.responseText) {
+					this.aiDialog.responseText = 'AI 未能生成有效的解答内容，请尝试重新提问。';
+				}
+
+				// 保存到 10 条 FIFO 历史记录中
+				this.saveAiHistoryRecord({
+					id: recordId,
+					queryText: activeQuery,
+					responseText: this.aiDialog.responseText,
+					image: this.aiSelectedImage ? { ...this.aiSelectedImage } : null,
+					timestamp: getFormattedDateTime()
+				});
+
+				this.aiInputQuery = '';
+			} catch (err) {
+				if (err.name === 'AbortError') return;
+				console.error('sendAiQueryStream error:', err);
+				this.aiDialog.responseText = `**请求发生异常：** ${err.message || '网络连接超时，请检查 Key 或网络代理'}`;
+			} finally {
+				this.aiDialog.isStreaming = false;
+				this.aiAbortController = null;
+			}
+		},
+
 		handleCodeBlockCopy(e) {
-			const copyBtn = e.target ? e.target.closest('.code-copy-btn') : null;
+			// 增加范围限定，仅拦截代码块容器内部的复制按钮
+			const copyBtn = e.target ? e.target.closest('.code-block-wrapper .code-copy-btn') : null;
 			if (!copyBtn) return;
 
 			e.preventDefault();
@@ -1461,7 +2156,6 @@ export default {
 				this.showToast('无法提取代码块内容');
 			}
 		},
-
 		checkMobile() {
 			this.isMobile = window.innerWidth <= 768;
 			if (this.isMobile) {
@@ -1493,11 +2187,6 @@ export default {
 			return mimeMap[ext] || 'application/octet-stream';
 		},
 
-		/**
-		 * 重写：使用原生 fetch 直连后端接口：
-		 * ${baseUrl}/v1/download-file?sign=${localStorage.getItem('sign')}&uid=${localStorage.getItem('uid')}
-		 * 彻底避开 Axios 拦截器对二进制 Buffer/Blob 的破坏，保证下载与预览 100% 完整不损坏
-		 */
 		async getFileBlob(file) {
 			if (!file) return null;
 			if (file.blob && file.blob instanceof Blob && file.blob.size > 0) {
@@ -1507,16 +2196,9 @@ export default {
 			const fileId = file.id || file.file_id || '';
 			const mimeType = this.getMimeType(file.name || '');
 
-			// 自动获取项目 baseUrl (兼容配置)
-			// let baseUrl = process.env.VUE_APP_BASE_API || process.env.VUE_APP_BASE_URL || window.VUE_APP_BASE_API || '';
-			// if (baseUrl.endsWith('/')) {
-			// 	baseUrl = baseUrl.slice(0, -1);
-			// }
-
 			const sign = encodeURIComponent(localStorage.getItem('sign') || '');
 			const uid = encodeURIComponent(localStorage.getItem('uid') || '');
 
-			// 1. 拼接完整的后端下载接口地址
 			let downloadUrl = `${baseUrl}/v1/download-file?sign=${sign}&uid=${uid}`;
 			if (fileId) {
 				downloadUrl += `&file_id=${encodeURIComponent(fileId)}&id=${encodeURIComponent(fileId)}`;
@@ -1529,12 +2211,10 @@ export default {
 			}
 
 			try {
-				// 2. 原生 fetch 发起 GET 请求（绝对不会被 Axios 拦截器转字符串）
 				const response = await fetch(downloadUrl, {
 					method: 'GET'
 				});
 
-				// 3. 如果主接口请求未成功，尝试直接请求 file.url 直连兜底
 				if (!response.ok) {
 					console.warn(`接口请求未成功 (HTTP ${response.status})，尝试直连拉取:`, file.url);
 					if (file.url && typeof file.url === 'string' && !file.url.startsWith('blob:')) {
@@ -1547,14 +2227,12 @@ export default {
 					return null;
 				}
 
-				// 4. 原生读取完整的原始二进制 Blob 流
 				const rawBlob = await response.blob();
 				if (!rawBlob || rawBlob.size === 0) {
 					console.warn('下载接口返回了空字节数据 (0 bytes)');
 					return null;
 				}
 
-				// 5. 赋予正确的 MIME 类型，使用 slice 确保不破坏原始 Byte 字节数据
 				return rawBlob.slice(0, rawBlob.size, mimeType || rawBlob.type || 'application/octet-stream');
 			} catch (err) {
 				console.error('getFileBlob fetch 网络请求失败:', err);
@@ -1665,7 +2343,6 @@ export default {
 
 					const authHeader = 'Basic ' + this.encodeBase64(username + ':' + password);
 
-					// 分支 1：提交附件文件
 					if (action === 'commit_file') {
 						if (!this.svnTargetFile) {
 							Message.error('无法获取附件文件信息');
@@ -1676,7 +2353,6 @@ export default {
 						const targetFileName = this.svnTargetFile.name;
 						const targetFileUrl = parentDirectoryUrl + encodeURIComponent(targetFileName);
 
-						// 获取完整未破坏的二进制 Blob
 						const fileBlob = await this.getFileBlob(this.svnTargetFile);
 						if (!fileBlob) {
 							Message.error('获取文件完整数据失败');
@@ -1684,7 +2360,6 @@ export default {
 							return;
 						}
 
-						// 步骤 1. 优先尝试前端 WebDAV PUT 直连提交到 SVN 服务器
 						try {
 							const svnPutResp = await fetch(targetFileUrl, {
 								method: 'PUT',
@@ -1704,7 +2379,6 @@ export default {
 							console.warn('WebDAV 直连受限，准备尝试后端 API 提交:', netErr);
 						}
 
-						// 步骤 2. 降级尝试调后端 API
 						let fileBase64 = '';
 						try {
 							fileBase64 = await new Promise((resolve) => {
@@ -1754,7 +2428,6 @@ export default {
 							Message.error(`SVN 提交失败，请检查 SVN 仓库地址或账号权限 (HTTP ${apiResp.status})`);
 						}
 					} 
-					// 分支 2：提交排错文档正文 (.docx)
 					else if (action === 'commit') {
 						if (!this.svnTargetProblem) return;
 
@@ -1774,7 +2447,6 @@ export default {
 
 						const docBlob = new Blob(['\ufeff' + wordHtml], { type: 'application/msword;charset=utf-8' });
 
-						// 步骤 1. 优先尝试前端 WebDAV PUT 直连写入 SVN 仓库
 						try {
 							const svnPutResp = await fetch(targetFileUrl, {
 								method: 'PUT',
@@ -1794,7 +2466,6 @@ export default {
 							console.warn('WebDAV 直连提交受限，准备尝试后端 API:', netErr);
 						}
 
-						// 步骤 2. 降级尝试调后端 API
 						const response = await fetch('/api/svn-commit-docx', {
 							method: 'POST',
 							headers: {
@@ -1975,7 +2646,6 @@ export default {
 				this.showToast('无法下载空文件');
 				return;
 			}
-			// 兼容某些 Edge / IE 遗留浏览器 API
 			if (window.navigator && window.navigator.msSaveOrOpenBlob) {
 				window.navigator.msSaveOrOpenBlob(blob, fullFilename);
 				return;
@@ -1994,7 +2664,6 @@ export default {
 			document.body.appendChild(link);
 			link.click();
 			
-			// 延迟 5 秒释放 URL，确保浏览器将完整字节流写入磁盘
 			setTimeout(() => {
 				if (document.body.contains(link)) {
 					document.body.removeChild(link);
@@ -2050,7 +2719,6 @@ export default {
 			this.isEditMode = false;
 
 			try {
-				// 获取完整的原始 Blob 数据
 				const blob = await this.getFileBlob(file);
 				if (!blob || blob.size === 0) {
 					this.showToast('无法获取附件完整数据，请检查网络或重新登录');
@@ -3911,7 +4579,642 @@ export default {
 </script>
 
 <style scoped>
-/* 富文本编辑器特定样式 */
+/* ================= 划选文字 AI 提问 浮动微按钮 ================= */
+.ai-selection-tooltip {
+	position: absolute;
+	z-index: 99999;
+	background: linear-gradient(135deg, #0ea5e9, #6366f1);
+	color: #ffffff;
+	padding: 6px 14px;
+	border-radius: 20px;
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+	box-shadow: 0 4px 16px rgba(14, 165, 233, 0.45);
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+	user-select: none;
+}
+
+.ai-selection-tooltip:hover {
+	transform: scale(1.08) translateY(-2px);
+	box-shadow: 0 6px 20px rgba(14, 165, 233, 0.65);
+}
+
+/* ================= 页面右侧 AI 悬浮球 (FAB) ================= */
+.ai-floating-fab {
+	position: fixed;
+	right: 36px;
+	bottom: 140px; /* 提升高度，避开底部置顶悬浮栏 */
+	width: 48px;
+	height: 48px;
+	border-radius: 50%;
+	background: linear-gradient(135deg, #0ea5e9, #6366f1);
+	color: #ffffff;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	z-index: 95;
+	box-shadow: 0 6px 20px rgba(14, 165, 233, 0.45);
+	transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s;
+	user-select: none;
+}
+
+.ai-floating-fab:hover {
+	transform: scale(1.12) translateY(-3px);
+	box-shadow: 0 10px 28px rgba(14, 165, 233, 0.65);
+}
+
+.fab-glow-ring {
+	position: absolute;
+	top: -2px; left: -2px; right: -2px; bottom: -2px;
+	border-radius: 50%;
+	border: 2px solid rgba(56, 189, 248, 0.6);
+	animation: fabPulse 2s infinite;
+}
+
+@keyframes fabPulse {
+	0% { transform: scale(1); opacity: 0.8; }
+	100% { transform: scale(1.35); opacity: 0; }
+}
+
+.fab-icon {
+	font-size: 22px;
+}
+
+.fab-history-badge {
+	position: absolute;
+	top: -4px;
+	right: -6px;
+	background-color: #f59e0b;
+	color: #000;
+	font-size: 10px;
+	font-weight: 800;
+	padding: 1px 5px;
+	border-radius: 10px;
+	border: 2px solid var(--bg-card);
+	font-family: monospace;
+}
+
+/* ================= AI 弹窗 UI 样式 ================= */
+.ai-dialog-custom-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding-right: 28px;
+	flex-wrap: wrap;
+	gap: 10px;
+}
+
+.header-title-left {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.ai-glow-icon {
+	width: 32px;
+	height: 32px;
+	border-radius: 10px;
+	background: linear-gradient(135deg, #0ea5e9, #6366f1);
+	color: #fff;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 18px;
+	box-shadow: 0 0 14px rgba(14, 165, 233, 0.5);
+}
+
+.title-text {
+	font-size: 16px;
+	font-weight: 700;
+	color: var(--text-h1);
+}
+
+.ai-model-tag {
+	font-size: 11px;
+	font-weight: 600;
+	background-color: var(--active-sidebar);
+	color: var(--primary-blue);
+	padding: 2px 8px;
+	border-radius: 10px;
+	font-family: monospace;
+	border: 1px solid rgba(14, 165, 233, 0.2);
+}
+
+.header-actions-right {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+/* 仿截图 Models/Agents 高颜值胶囊 Pill 切页滑块 */
+.ai-pill-switch {
+	display: inline-flex;
+	align-items: center;
+	background-color: var(--hover-sidebar);
+	border: 1px solid var(--border-color);
+	padding: 3px;
+	border-radius: 20px;
+	gap: 2px;
+	user-select: none;
+}
+
+.pill-item {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--text-muted);
+	padding: 5px 14px;
+	border-radius: 16px;
+	cursor: pointer;
+	transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.pill-item:hover {
+	color: var(--text-p);
+}
+
+.pill-item.active {
+	background-color: var(--bg-card);
+	color: var(--primary-blue);
+	box-shadow: var(--shadow-sm);
+}
+
+.bp-wrapper.is-dark .pill-item.active {
+	background-color: #27272a;
+	color: #f8fafc;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.ai-config-toggle-btn {
+	color: var(--primary-blue) !important;
+	font-size: 16px !important;
+	padding: 0 !important;
+}
+
+.ai-settings-panel {
+	background-color: var(--hover-sidebar);
+	border: 1px solid var(--border-color);
+	border-radius: 12px;
+	padding: 16px;
+	margin-bottom: 16px;
+	box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.settings-title {
+	font-size: 13px;
+	font-weight: 700;
+	color: var(--primary-blue);
+	margin-bottom: 12px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.settings-tip {
+	font-size: 11px;
+	font-weight: normal;
+	color: var(--text-muted);
+}
+
+.ai-chat-view-container {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+
+.ai-selected-preview {
+	background-color: var(--bg-app);
+	border: 1px dashed var(--primary-blue);
+	border-radius: 10px;
+	padding: 10px 14px;
+}
+
+.preview-label {
+	font-size: 12px;
+	font-weight: 700;
+	color: var(--primary-blue);
+	margin-bottom: 4px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.preview-text {
+	font-size: 12px;
+	color: var(--text-p);
+	line-height: 1.5;
+	max-height: 80px;
+	overflow-y: auto;
+	word-break: break-all;
+	font-family: monospace;
+}
+
+.ai-response-card {
+	border: 1px solid var(--border-color);
+	border-radius: 12px;
+	background-color: var(--bg-card);
+	overflow: hidden;
+	box-shadow: var(--shadow-sm);
+	transition: border-color 0.3s;
+}
+
+.ai-response-card.is-streaming {
+	border-color: var(--primary-blue);
+	box-shadow: 0 0 16px rgba(14, 165, 233, 0.2);
+}
+
+.response-card-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 8px 14px;
+	background-color: var(--hover-sidebar);
+	border-bottom: 1px solid var(--border-color);
+}
+
+.header-status {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.status-indicator {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background-color: #10b981;
+}
+
+.status-indicator.pulse-active {
+	background-color: #0ea5e9;
+	animation: pulseGlow 1.2s infinite;
+}
+
+@keyframes pulseGlow {
+	0% { box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.7); }
+	70% { box-shadow: 0 0 0 8px rgba(14, 165, 233, 0); }
+	100% { box-shadow: 0 0 0 0 rgba(14, 165, 233, 0); }
+}
+
+.status-text {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--text-h1);
+}
+
+/* AI 复制回答下拉按钮样式（与代码块复制按钮一致） */
+.ai-code-copy-btn {
+	appearance: none !important;
+	-webkit-appearance: none !important;
+	-moz-appearance: none !important;
+	background: rgba(255, 255, 255, 0.08) !important;
+	border: 1px solid rgba(255, 255, 255, 0.15) !important;
+	color: #cbd5e1 !important;
+	border-radius: 6px !important;
+	padding: 4px 10px !important;
+	font-size: 11px !important;
+	line-height: 1.2 !important;
+	cursor: pointer !important;
+	outline: none !important;
+	display: inline-flex !important;
+	align-items: center !important;
+	gap: 5px !important;
+	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+	box-shadow: none !important;
+	font-family: inherit !important;
+	margin: 0 !important;
+	vertical-align: middle !important;
+}
+
+.ai-code-copy-btn:hover {
+	background: rgba(14, 165, 233, 0.25) !important;
+	color: #38bdf8 !important;
+	border-color: rgba(56, 189, 248, 0.5) !important;
+	transform: translateY(-1px) !important;
+}
+
+.response-card-body {
+	min-height: 180px;
+	max-height: 320px;
+	overflow-y: auto;
+	padding: 16px 20px;
+	position: relative;
+}
+
+.streaming-cursor {
+	display: inline-block;
+	color: var(--primary-blue);
+	font-weight: bold;
+	margin-left: 4px;
+	animation: blinkCursor 0.8s infinite;
+}
+
+@keyframes blinkCursor {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0; }
+}
+
+/* 输入框组合区 & 底部一排单行工具栏 */
+.ai-input-composer {
+	background-color: var(--hover-sidebar);
+	border: 1px solid var(--border-color);
+	border-radius: 12px;
+	padding: 10px 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.composer-textarea ::v-deep .el-textarea__inner {
+	background-color: var(--bg-card) !important;
+}
+
+.composer-single-bar {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding-top: 4px;
+}
+
+.bar-left-tools {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.tool-divider {
+	width: 1px;
+	height: 16px;
+	background-color: var(--border-color);
+	margin: 0 2px;
+}
+
+.icon-tool-btn {
+	padding: 6px 10px !important;
+	font-size: 14px !important;
+	background-color: var(--bg-card) !important;
+	border-color: var(--border-color) !important;
+	color: var(--text-p) !important;
+}
+
+.icon-tool-btn.has-file {
+	border-color: var(--primary-blue) !important;
+	color: var(--primary-blue) !important;
+	background-color: var(--active-sidebar) !important;
+}
+
+.preset-icon-group {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.preset-icon-chip {
+	cursor: pointer;
+	padding: 2px 6px;
+	border-radius: 6px;
+	font-size: 13px;
+	background-color: var(--bg-card);
+	border: 1px solid var(--border-color);
+	transition: all 0.2s;
+	user-select: none;
+}
+
+.preset-icon-chip:hover {
+	transform: scale(1.15);
+	border-color: var(--primary-blue);
+	background-color: var(--active-sidebar);
+}
+
+.clear-input-btn {
+	color: var(--text-muted) !important;
+	padding: 0 4px !important;
+	font-size: 14px !important;
+}
+
+.clear-input-btn:hover {
+	color: #ef4444 !important;
+}
+
+.bar-right-actions {
+	display: flex;
+	align-items: center;
+}
+
+.stop-btn {
+	background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+	border: none !important;
+	color: white !important;
+	font-weight: 500;
+	box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);
+	transition: all 0.3s ease;
+}
+
+.stop-btn:hover {
+	transform: translateY(-1px);
+	box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+}
+
+.image-preview-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	background-color: var(--bg-card);
+	border: 1px solid var(--primary-blue);
+	padding: 4px 10px;
+	border-radius: 8px;
+	width: fit-content;
+}
+
+.thumb-img {
+	width: 28px;
+	height: 28px;
+	border-radius: 4px;
+	object-fit: cover;
+}
+
+.thumb-name {
+	font-size: 12px;
+	color: var(--text-p);
+	max-width: 160px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.remove-img-btn {
+	cursor: pointer;
+	color: #ef4444;
+	font-size: 14px;
+}
+
+/* AI 历史记录视图 */
+.ai-history-view-container {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.history-list-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 0 4px;
+}
+
+.history-count-title {
+	font-size: 13px;
+	font-weight: 700;
+	color: var(--text-h1);
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.danger-text-btn {
+	color: #ef4444 !important;
+	padding: 0 !important;
+	font-size: 12px !important;
+}
+
+.history-card-list {
+	max-height: 420px;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding-right: 4px;
+}
+
+.history-empty-hint {
+	text-align: center;
+	padding: 60px 0;
+	color: var(--text-muted);
+	font-size: 13px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.history-empty-hint i {
+	font-size: 32px;
+	color: var(--border-color);
+}
+
+.history-item-card {
+	background-color: var(--bg-card);
+	border: 1px solid var(--border-color);
+	border-radius: 10px;
+	padding: 12px 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.history-item-card:hover {
+	border-color: var(--primary-blue);
+	box-shadow: var(--shadow-sm);
+}
+
+.history-item-card.is-active-history {
+	border-color: var(--primary-blue);
+	background-color: var(--active-sidebar);
+}
+
+.history-item-top {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.history-title-group {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.history-index-tag {
+	font-size: 11px;
+	font-weight: 800;
+	background-color: var(--hover-sidebar);
+	color: var(--primary-blue);
+	padding: 1px 6px;
+	border-radius: 4px;
+	font-family: monospace;
+}
+
+.history-time {
+	font-size: 11px;
+	color: var(--text-muted);
+}
+
+.history-actions-group {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.history-query-snippet {
+	font-size: 13px;
+	color: var(--text-h1);
+	line-height: 1.4;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.history-image-tag {
+	font-size: 11px;
+	color: var(--primary-blue);
+	background-color: var(--hover-sidebar);
+	padding: 1px 5px;
+	border-radius: 4px;
+	margin-left: 6px;
+}
+
+.history-response-snippet {
+	font-size: 12px;
+	color: var(--text-muted);
+	line-height: 1.4;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.ai-placeholder-text {
+	text-align: center;
+	padding: 40px 0;
+	font-size: 13px;
+	color: var(--text-muted);
+}
+
+.warning-text {
+	color: #f59e0b;
+	font-weight: 600;
+}
+
+.ai-dialog-footer {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.streaming-tip {
+	font-size: 12px;
+	color: var(--primary-blue);
+	font-weight: 600;
+}
+
+/* ================= 富文本编辑器特定样式 ================= */
 .word-toolbar {
 	display: flex;
 	align-items: center;
@@ -3942,6 +5245,7 @@ export default {
 	box-shadow: 0 0 0 1px var(--primary-blue);
 }
 
+/* ================= 主框架与主题变量 ================= */
 .bp-wrapper {
 	--bg-app: #f8fafc;
 	--bg-sidebar: #ffffff;
@@ -4504,7 +5808,6 @@ export default {
 	margin-top: 12px;
 }
 
-/* 统一控制所有现代 Input 与 Select 框的深浅主题背景样式，确保与搜索框背景色一致 */
 .modern-el-input ::v-deep .el-input__inner,
 .modern-el-input ::v-deep .el-textarea__inner {
 	background-color: var(--bg-app) !important;
@@ -5566,10 +6869,6 @@ export default {
 	box-shadow: 0 2px 8px rgba(14, 165, 233, 0.15);
 }
 
-.attachment-badge i.el-icon-edit-outline {
-	font-size: 14px;
-}
-
 .attachment-badge .file-name {
 	max-width: 140px;
 	white-space: nowrap;
@@ -5683,29 +6982,163 @@ export default {
 	font-size: 13px;
 }
 
-.markdown-body ::v-deep pre {
-	background-color: #0f172a;
-	color: #f8fafc;
-	padding: 16px;
-	border-radius: 8px;
-	font-family: "JetBrains Mono", Consolas, monospace;
-	font-size: 13px;
-	line-height: 1.6;
-	overflow-x: auto;
-	margin: 12px 0;
-	border: 1px solid #1e293b;
+/* =========================================================
+   代码块深度修复样式 (统一边框、背景与复制按钮原生重置)
+   ========================================================= */
+
+/* 1. 代码块最外层统一包裹容器 */
+.code-block-wrapper,
+.markdown-body ::v-deep .code-block-wrapper {
+	position: relative !important;
+	margin: 14px 0 !important;
+	border-radius: 8px !important;
+	overflow: hidden !important;
+	background-color: #0f172a !important; /* 深蓝极客色统一背景 */
+	border: 1px solid #1e293b !important;
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25) !important;
+	display: block !important;
 }
 
-.markdown-body ::v-deep pre code {
-	background-color: transparent;
-	color: inherit;
-	padding: 0;
+.bp-wrapper.is-dark .code-block-wrapper,
+.bp-wrapper.is-dark .markdown-body ::v-deep .code-block-wrapper {
+	background-color: #090d16 !important;
+	border-color: #1e293b !important;
 }
 
-.bp-wrapper.is-dark .markdown-body ::v-deep pre {
-	background-color: #09090b;
-	border-color: #27272a;
-	color: #f8fafc;
+/* 2. 代码块 Header 头部结构 */
+.code-block-header,
+.markdown-body ::v-deep .code-block-header {
+	display: flex !important;
+	justify-content: space-between !important;
+	align-items: center !important;
+	padding: 8px 14px !important;
+	background-color: rgba(255, 255, 255, 0.05) !important;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+	font-size: 12px !important;
+	user-select: none !important;
+	box-sizing: border-box !important;
+	width: 100% !important;
+}
+
+.bp-wrapper.is-dark .code-block-header,
+.bp-wrapper.is-dark .markdown-body ::v-deep .code-block-header {
+	background-color: rgba(255, 255, 255, 0.03) !important;
+	border-bottom-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* 3. 语言 label 标签 */
+.code-lang-label,
+.markdown-body ::v-deep .code-lang-label {
+	font-family: "JetBrains Mono", Consolas, Monaco, monospace !important;
+	font-weight: 700 !important;
+	font-size: 11px !important;
+	color: #38bdf8 !important; /* 亮天蓝标识 */
+	letter-spacing: 0.8px !important;
+	text-transform: uppercase !important;
+	line-height: 1 !important;
+}
+
+/* 4. 复制按钮样式彻底重置（清除浏览器默认白色外框与黑字） */
+.code-copy-btn,
+button.code-copy-btn,
+.markdown-body ::v-deep .code-copy-btn,
+.markdown-body ::v-deep button.code-copy-btn {
+	appearance: none !important;
+	-webkit-appearance: none !important;
+	-moz-appearance: none !important;
+	background: rgba(255, 255, 255, 0.08) !important;
+	border: 1px solid rgba(255, 255, 255, 0.15) !important;
+	color: #cbd5e1 !important;
+	border-radius: 6px !important;
+	padding: 4px 10px !important;
+	font-size: 11px !important;
+	line-height: 1.2 !important;
+	cursor: pointer !important;
+	outline: none !important;
+	display: inline-flex !important;
+	align-items: center !important;
+	gap: 5px !important;
+	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+	box-shadow: none !important;
+	font-family: inherit !important;
+	margin: 0 !important;
+	vertical-align: middle !important;
+}
+
+.code-copy-btn i,
+.markdown-body ::v-deep .code-copy-btn i {
+	font-size: 13px !important;
+	color: inherit !important;
+}
+
+/* 复制按钮 Hover 悬浮态 */
+.code-copy-btn:hover,
+button.code-copy-btn:hover,
+.markdown-body ::v-deep .code-copy-btn:hover {
+	background: rgba(14, 165, 233, 0.25) !important;
+	color: #38bdf8 !important;
+	border-color: rgba(56, 189, 248, 0.5) !important;
+	transform: translateY(-1px) !important;
+}
+
+/* 复制按钮成功点击态 */
+.code-copy-btn.copied,
+button.code-copy-btn.copied,
+.markdown-body ::v-deep .code-copy-btn.copied {
+	background: rgba(16, 185, 129, 0.2) !important;
+	color: #34d399 !important;
+	border-color: rgba(52, 211, 153, 0.5) !important;
+}
+
+/* 5. 消除 code-block-wrapper 内 pre 标签的内嵌独立边框与外边距 */
+.code-block-wrapper pre,
+.markdown-body .code-block-wrapper pre,
+.markdown-body ::v-deep .code-block-wrapper pre {
+	margin: 0 !important;
+	padding: 14px 16px !important;
+	background-color: transparent !important;
+	border: none !important;
+	border-radius: 0 !important;
+	box-shadow: none !important;
+	overflow-x: auto !important;
+}
+
+/* 6. 统一格式化代码文本 */
+.code-block-wrapper pre code,
+.markdown-body .code-block-wrapper pre code,
+.markdown-body ::v-deep .code-block-wrapper pre code {
+	background-color: transparent !important;
+	padding: 0 !important;
+	border: none !important;
+	border-radius: 0 !important;
+	color: #f8fafc !important;
+	font-family: "JetBrains Mono", Consolas, Monaco, "Andale Mono", monospace !important;
+	font-size: 13px !important;
+	line-height: 1.6 !important;
+	white-space: pre !important;
+	word-break: normal !important;
+	word-wrap: normal !important;
+}
+
+/* 7. 兜底处理通用（非 Wrapper 包裹）的独立原生 pre 块 */
+.markdown-body ::v-deep pre:not(.code-block-wrapper pre) {
+	background-color: #0f172a !important;
+	color: #f8fafc !important;
+	padding: 14px 16px !important;
+	border-radius: 8px !important;
+	font-family: "JetBrains Mono", Consolas, monospace !important;
+	font-size: 13px !important;
+	line-height: 1.6 !important;
+	overflow-x: auto !important;
+	margin: 14px 0 !important;
+	border: 1px solid #1e293b !important;
+}
+
+.markdown-body ::v-deep pre:not(.code-block-wrapper pre) code {
+	background-color: transparent !important;
+	color: inherit !important;
+	padding: 0 !important;
+	border: none !important;
 }
 
 .markdown-body ::v-deep blockquote {
@@ -5920,11 +7353,10 @@ export default {
 }
 
 .bp-wrapper.is-dark ::v-deep .el-dialog__title,
-.bp-wrapper.is-dark ::v-deep .el-form-item__label {
+.bp-wrapper.is-dark ::v-dark .el-form-item__label {
 	color: var(--text-h1);
 }
 
-/* 暗黑模式下弹窗与全域输入框的统一背景调整 */
 .bp-wrapper.is-dark ::v-deep .el-input__inner,
 .bp-wrapper.is-dark ::v-deep .el-textarea__inner {
 	background-color: var(--bg-app) !important;
@@ -6022,226 +7454,8 @@ export default {
 	.pagination-wrapper ::v-deep .el-pagination button { height: 26px !important; line-height: 26px !important; min-width: 26px !important; padding: 0 4px !important; }
 
 	.quick-scroll-widget { right: 16px; bottom: 20px; }
+	.ai-floating-fab { right: 16px; bottom: 115px; width: 42px; height: 42px; }
 	.undo-toast { width: 90% !important; left: 5% !important; margin-left: 0 !important; top: 64px !important; }
 	.preview-iframe-container { height: 380px; }
 }
-</style>
-
-<style>
-.action-menu-list {
-	display: flex;
-	flex-direction: column;
-}
-
-.action-item {
-	padding: 10px 16px;
-	font-size: 13px;
-	cursor: pointer;
-	display: flex;
-	align-items: center;
-	transition: all 0.2s;
-	font-weight: 500;
-}
-
-.switch-action-item {
-	justify-content: space-between;
-	cursor: default;
-}
-
-.switch-item-left {
-	display: flex;
-	align-items: center;
-}
-
-.switch-item-left i, .action-item i {
-	margin-right: 10px;
-	font-size: 16px;
-}
-
-.action-item.danger { color: #ef4444; }
-.action-item.danger:hover { color: #f87171; }
-.action-item.is-disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
-.action-item.is-active-item { color: #0ea5e9; background-color: rgba(14, 165, 233, 0.1); }
-.action-divider { height: 1px; margin: 4px 0; }
-
-.custom-dark-popover {
-	background-color: #18181b !important;
-	border: 1px solid #27272a !important;
-	padding: 6px 0 !important;
-	border-radius: 12px !important;
-	box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
-}
-
-.custom-dark-popover .action-item,
-.custom-dark-popover .el-dropdown-menu__item {
-	color: #cbd5e1 !important;
-}
-
-.custom-dark-popover .action-item:hover:not(.switch-action-item),
-.custom-dark-popover .el-dropdown-menu__item:hover {
-	background-color: #27272a !important;
-	color: #38bdf8 !important;
-}
-
-.custom-dark-popover .action-divider {
-	background-color: #27272a;
-}
-
-.custom-dark-popover .is-active-item {
-	color: #38bdf8 !important;
-	background-color: rgba(56, 189, 248, 0.1) !important;
-}
-
-.custom-light-popover {
-	padding: 6px 0 !important;
-	border-radius: 12px !important;
-	box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1) !important;
-	border: 1px solid #e2e8f0 !important;
-}
-
-.custom-light-popover .action-item,
-.custom-light-popover .el-dropdown-menu__item {
-	color: #334155 !important;
-}
-
-.custom-light-popover .action-item:hover:not(.switch-action-item),
-.custom-light-popover .el-dropdown-menu__item:hover {
-	background-color: #f1f5f9 !important;
-	color: #0ea5e9 !important;
-}
-
-.custom-light-popover .action-divider {
-	background-color: #e2e8f0;
-}
-
-.custom-dark-select {
-	background-color: #18181b !important;
-	border: 1px solid #27272a !important;
-	box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
-}
-
-.custom-dark-select .el-select-dropdown__item {
-	color: #cbd5e1 !important;
-}
-
-.custom-dark-select .el-select-dropdown__item.hover,
-.custom-dark-select .el-select-dropdown__item:hover {
-	background-color: #27272a !important;
-}
-
-.custom-dark-select .el-select-dropdown__item.selected {
-	color: #38bdf8 !important;
-	background-color: rgba(56, 189, 248, 0.1) !important;
-	font-weight: bold;
-}
-
-.custom-dark-select .el-select-dropdown__item.is-disabled {
-	color: #64748b !important;
-}
-
-.custom-dark-select .popper__arrow::after {
-	border-bottom-color: #18181b !important;
-}
-
-.custom-light-select {
-	border-radius: 8px !important;
-	box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1) !important;
-	border: 1px solid #e2e8f0 !important;
-}
-
-.category-filter-toggle {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	margin-top: 10px;
-	padding: 6px 10px;
-	background-color: var(--hover-sidebar);
-	border: 1px solid var(--border-color);
-	border-radius: 8px;
-	cursor: pointer;
-	transition: all 0.2s;
-}
-
-.category-filter-toggle:hover {
-	border-color: var(--primary-blue);
-}
-
-.toggle-label {
-	font-size: 12px;
-	color: var(--text-muted);
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	transition: color 0.2s;
-}
-
-.toggle-label.is-active {
-	color: var(--primary-blue);
-	font-weight: 600;
-}
-/* 全局右键菜单浮层定位样式 */
-.custom-context-menu-popover {
-	position: fixed;
-	z-index: 9999;
-	min-width: 140px;
-}
-/* Markdown 代码块专属头部与复制按钮样式 */
-.code-block-wrapper {
-	position: relative;
-	margin: 12px 0;
-	border-radius: 8px;
-	overflow: hidden;
-	background-color: #0f172a;
-	border: 1px solid #1e293b;
-}
-
-.code-block-header {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	padding: 6px 12px;
-	background-color: rgba(255, 255, 255, 0.05);
-	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-	font-size: 12px;
-}
-
-.code-lang-label {
-	font-weight: 700;
-	color: #38bdf8;
-	letter-spacing: 0.5px;
-	font-family: monospace;
-}
-
-.code-copy-btn {
-	background: transparent;
-	border: 1px solid rgba(255, 255, 255, 0.2);
-	color: #cbd5e1;
-	border-radius: 4px;
-	padding: 2px 8px;
-	font-size: 11px;
-	cursor: pointer;
-	transition: all 0.2s;
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-}
-
-.code-copy-btn:hover {
-	background: rgba(14, 165, 233, 0.2);
-	color: #38bdf8;
-	border-color: #38bdf8;
-}
-
-.code-copy-btn.copied {
-	color: #10b981;
-	border-color: #10b981;
-	background: rgba(16, 185, 129, 0.15);
-}
-
-.code-block-wrapper pre {
-	margin: 0 !important;
-	border-radius: 0 !important;
-	border: none !important;
-}
-
 </style>
