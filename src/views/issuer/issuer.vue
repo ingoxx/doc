@@ -1921,8 +1921,8 @@ export default {
 						percent = Math.min(Math.max(percent, 2), 98); // 限制在可视范围内
 						
 						let shortTitle = this.getPlainSummary(item.queryText);
-						if (shortTitle.includes('【划选上下文】')) {
-							shortTitle = shortTitle.replace(/【划选上下文】[\s\S]*?【我的提问】：/g, '').trim() || '快捷解析追问';
+						if (shortTitle.includes('【附带的报错或代码上下文】')) {
+							shortTitle = shortTitle.replace(/【附带的报错或代码上下文】[\s\S]*?【用户的最新提问】：/g, '').trim() || '快捷解析追问';
 						}
 
 						markers.push({
@@ -2169,7 +2169,7 @@ export default {
 		},
 
 		/**
-		 * 核心：Gemini API SSE 流式输出推流与多模态识图发送
+		 * 核心：Gemini API SSE 流式输出推流与多模态多轮对话
 		 */
 		async sendAiQueryStream() {
 			if (!this.aiForm.apiKey) {
@@ -2188,21 +2188,49 @@ export default {
 			this.aiDialog.queryText = "";
 			this.aiSelectedImage = null;
 
-			// 拼接 Prompt 提示词 (这里的上下文将发给 AI 进行分析，UI 上会被隐藏)
-			let finalPrompt = "";
-			if (this.aiForm.customPrompt) finalPrompt += this.aiForm.customPrompt + "\n\n";
-			if (this.aiDialog.currentContext) finalPrompt += "【上下文代码或报错内容】:\n" + this.aiDialog.currentContext + "\n\n";
-			finalPrompt += "【我的提问】:\n" + (this.aiDialog.currentQuery || "请帮我分析解答");
+			// ==============================================================
+			// 【修复多轮记忆】：构建包含所有历史上下文的 API contents 数组
+			// ==============================================================
+			const apiContents = [];
 
-			// 初始化 parts 数组
-			const parts = [{ text: finalPrompt }];
+			// 1. 将历史记录严格按照 user / model 轮次推入
+			for (let i = 0; i < this.aiHistory.length; i++) {
+				const item = this.aiHistory[i];
+				// 提取包含隐藏上下文的 API 专属提问文本
+				let userText = item.apiQueryText || item.queryText || ' ';
+				
+				// 如果是整个对话的历史第一条，且有预设，确保预设只出现在第一句话
+				if (i === 0 && this.aiForm.customPrompt) {
+					if (!userText.includes("【系统预设指令】")) {
+						userText = `【系统预设指令】\n${this.aiForm.customPrompt}\n\n${userText}`;
+					}
+				}
 
-			// 如果上传了图片，转 Base64 后插入到请求体 parts 中
+				apiContents.push({ role: 'user', parts: [{ text: userText }] });
+				apiContents.push({ role: 'model', parts: [{ text: item.responseText || ' ' }] });
+			}
+
+			// 2. 组装当前最新一次提问的 API 专用文本 (携带完整的划选上下文)
+			let currentApiText = "";
+			if (this.aiDialog.currentContext) {
+				currentApiText += "【附带的报错或代码上下文】:\n" + this.aiDialog.currentContext + "\n\n";
+			}
+			currentApiText += "【用户的最新提问】:\n" + (this.aiDialog.currentQuery || "请基于上下文继续分析解答");
+
+			// 这个变量专门发给接口（如果是空历史记录的第一句话，注入 prompt）
+			let finalCurrentApiText = currentApiText;
+			if (this.aiHistory.length === 0 && this.aiForm.customPrompt) {
+				finalCurrentApiText = `【系统预设指令】\n${this.aiForm.customPrompt}\n\n${currentApiText}`;
+			}
+
+			const currentParts = [{ text: finalCurrentApiText }];
+
+			// 如果当前上传了图片，转 Base64 后插入到请求体 parts 中
 			if (this.aiDialog.currentImage && this.aiDialog.currentImage.file) {
 				try {
 					const base64String = await this.fileToBase64(this.aiDialog.currentImage.file);
 					const pureBase64Data = base64String.split(',')[1];
-					parts.push({
+					currentParts.push({
 						inline_data: {
 							mime_type: this.aiDialog.currentImage.file.type || 'image/jpeg',
 							data: pureBase64Data
@@ -2214,12 +2242,18 @@ export default {
 				}
 			}
 
+			// 3. 将当前最新提问推入 contents 数组的末尾
+			apiContents.push({ role: 'user', parts: currentParts });
+
 			const modelName = this.aiForm.model || 'gemini-1.5-pro';
 			const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?key=${this.aiForm.apiKey}`;
-			const payload = { contents: [{ parts: parts }] };
+			const payload = { contents: apiContents };
 
 			this.aiDialog.isStreaming = true;
 			this.aiDialog.responseText = "";
+
+			// 初始化中断控制器 (修复停止生成按钮无效的问题)
+			this.aiAbortController = new AbortController();
 
 			// 立即滚动到底部，展示 User 的气泡
 			this.scrollAiContentToBottom();
@@ -2228,7 +2262,8 @@ export default {
 				const response = await fetch(url, {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify(payload)
+					body: JSON.stringify(payload),
+					signal: this.aiAbortController.signal // 挂载终止信号
 				});
 
 				if (!response.ok) {
@@ -2276,18 +2311,23 @@ export default {
 					}
 				}
 			} catch (error) {
-				this.aiDialog.responseText += `\n\n❌ **请求中断:** ${error.message}`;
+				if (error.name === 'AbortError') {
+					this.aiDialog.responseText += `\n\n⚠️ **生成已手动停止**`;
+				} else {
+					this.aiDialog.responseText += `\n\n❌ **请求中断:** ${error.message}`;
+				}
 				this.scrollAiContentToBottom();
 			} finally {
 				this.aiDialog.isStreaming = false;
 				
-				// 优化：仅将用户最终提出的问题存储并呈现在 UI 里，去除赘余上下文拼接
-				let formattedQuery = this.aiDialog.currentQuery || this.aiDialog.currentContext || '请帮我分析解答';
+				// 优化分离：UI 上只显示干净的问题（去除所有的前缀）
+				let uiDisplayQuery = this.aiDialog.currentQuery || this.aiDialog.currentContext || '请分析这段报错/代码';
 
 				this.saveAiHistoryRecord({
 					id: Date.now(),
 					timestamp: getFormattedDateTime(),
-					queryText: formattedQuery,
+					queryText: uiDisplayQuery,    // 【用于 UI 展示】纯净无前缀
+					apiQueryText: currentApiText, // 【用于下一次 API 发送】包含完整的上下文拼接
 					image: this.aiDialog.currentImage,
 					responseText: this.aiDialog.responseText,
 					showThought: false // 归档后默认折叠思绪
