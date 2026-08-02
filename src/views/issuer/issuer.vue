@@ -789,7 +789,7 @@
 									<span class="snippet-name"><i class="el-icon-picture"></i> {{ aiDialog.currentImage.name }}</span>
 								</div>
 								<!-- 用户的问题文本 -->
-								<div class="plain-text-query">{{ (aiDialog.currentContext ? '【划选上下文】\n' + aiDialog.currentContext + '\n\n' : '') + (aiDialog.currentQuery || '...') }}</div>
+								<div class="plain-text-query">{{ aiDialog.currentQuery || aiDialog.currentContext || '...' }}</div>
 							</div>
 						</div>
 						
@@ -2188,7 +2188,7 @@ export default {
 			this.aiDialog.queryText = "";
 			this.aiSelectedImage = null;
 
-			// 拼接 Prompt 提示词
+			// 拼接 Prompt 提示词 (这里的上下文将发给 AI 进行分析，UI 上会被隐藏)
 			let finalPrompt = "";
 			if (this.aiForm.customPrompt) finalPrompt += this.aiForm.customPrompt + "\n\n";
 			if (this.aiDialog.currentContext) finalPrompt += "【上下文代码或报错内容】:\n" + this.aiDialog.currentContext + "\n\n";
@@ -2281,11 +2281,8 @@ export default {
 			} finally {
 				this.aiDialog.isStreaming = false;
 				
-				// 对话结束，把完整的对话流推入历史记录中归档
-				let formattedQuery = this.aiDialog.currentQuery;
-				if (this.aiDialog.currentContext) {
-					formattedQuery = `【划选上下文】\n${this.aiDialog.currentContext}\n\n【我的提问】：\n` + formattedQuery;
-				}
+				// 优化：仅将用户最终提出的问题存储并呈现在 UI 里，去除赘余上下文拼接
+				let formattedQuery = this.aiDialog.currentQuery || this.aiDialog.currentContext || '请帮我分析解答';
 
 				this.saveAiHistoryRecord({
 					id: Date.now(),
@@ -4986,10 +4983,37 @@ export default {
 	border-bottom-color: rgba(0, 0, 0, 0.05);
 }
 
+/* 1. 修改原有的 .chat-message，增加内边距和透明边框的默认状态 */
 .chat-message {
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
+	padding: 16px 20px; /* 增加内边距，让内容有独立卡片的呼吸感 */
+	border-radius: 16px; /* 增加较大圆角，贴近截图效果 */
+	border: 1px solid transparent; /* 默认透明边框，避免 hover 时发生抖动 */
+	transition: background-color 0.25s ease, border-color 0.25s ease; /* 平滑过渡动画 */
+}
+
+/* 2. 新增：浅色模式下鼠标移入的 Hover 效果 */
+.chat-message:hover {
+	background-color: var(--hover-sidebar);
+	border-color: var(--border-color);
+}
+
+/* 3. 新增：暗黑模式下鼠标移入的 Hover 效果 (高度还原您截图中的深色极客质感) */
+.bp-wrapper.is-dark .chat-message:hover {
+	background-color: rgba(255, 255, 255, 0.03); /* 极微弱的白色底色 */
+	border-color: rgba(255, 255, 255, 0.08);    /* 微弱的高光边框 */
+}
+
+/* 4. 可选优化：因为给消息框增加了 padding，建议把上一级的间距稍微调小一点，使视觉更紧凑 */
+/* 找到 .chat-turn-pair 并将其中的 gap: 24px 修改为 gap: 12px */
+.chat-turn-pair {
+	display: flex;
+	flex-direction: column;
+	gap: 12px; /* 从 24px 缩小为 12px */
+	padding-bottom: 24px;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 /* User & Model 名字标题栏 */
