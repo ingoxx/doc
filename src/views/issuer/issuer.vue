@@ -171,7 +171,7 @@
 
 			<!-- 右侧阅读工作区 (Main) -->
 			<main class="bp-main" ref="mainScrollContainer" @scroll="handleScroll">
-				<!-- 右侧锚点轨道 (PC端展示) -->
+				<!-- 右侧锚点轨道 (PC端主视图展示) -->
 				<div class="scrollbar-markers-track" v-if="scrollMarkers.length > 0 && !isMobile">
 					<el-popover
 						v-for="marker in scrollMarkers"
@@ -489,7 +489,7 @@
 																</span>
 															</div>
 
-															<!-- 更多附件下拉菜单 (改为 el-popover 并复用 action-menu-list 样式) -->
+															<!-- 更多附件下拉菜单 -->
 															<el-popover v-if="prob.attachments.length > 1" placement="bottom-start" width="260" trigger="click" :visible-arrow="false" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 																<div class="action-menu-list">
 																	<div class="action-item" v-for="(file, fIdx) in prob.attachments.slice(1)" :key="file.id || fIdx"
@@ -521,7 +521,7 @@
 														<i class="el-icon-check"></i> <span>保存修改</span>
 													</div>
 
-													<!-- SVN 拉取与提交同步按钮 (重构为 el-popover 完全复用样式) -->
+													<!-- SVN 拉取与提交同步按钮 -->
 													<el-popover placement="bottom" width="240" trigger="click" :visible-arrow="false" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 														<div class="action-menu-list">
 															<div class="action-item" @click="handleSvnCommand('pull', prob)">
@@ -545,7 +545,7 @@
 														<i class="el-icon-folder-opened"></i> <span>移动分类</span>
 													</div>
 
-													<!-- 复制全文下拉按钮 (重构为 el-popover 完全复用样式) -->
+													<!-- 复制全文下拉按钮 -->
 													<el-popover placement="bottom" width="240" trigger="click" :visible-arrow="false" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 														<div class="action-menu-list">
 															<div class="action-item" @click="handleCopyCommand('raw', prob.solution)">
@@ -625,22 +625,17 @@
 			custom-class="modern-dialog ai-dialog-modal"
 			@closed="handleAiDialogClose"
 		>
+			<!-- 头部 -->
 			<div slot="title" class="ai-dialog-custom-header">
 				<div class="header-title-left">
 					<div class="ai-glow-icon"><i class="el-icon-cpu"></i></div>
 					<span class="title-text">AI 排错助手</span>
-					<span class="ai-model-tag">{{ aiForm.model || 'gemini-1.5-flash' }}</span>
+					<span class="ai-model-tag">{{ aiForm.model || 'gemini-1.5-pro' }}</span>
 				</div>
 				<div class="header-actions-right">
-					<div class="ai-pill-switch">
-						<div class="pill-item" :class="{ 'active': aiActiveTab === 'chat' }" @click="aiActiveTab = 'chat'">
-							<i class="el-icon-chat-dot-square"></i> 智能追问
-						</div>
-						<div class="pill-item" :class="{ 'active': aiActiveTab === 'history' }" @click="aiActiveTab = 'history'">
-							<i class="el-icon-notebook-2"></i> 历史记录 ({{ aiHistory.length }}/10)
-						</div>
-					</div>
-
+					<el-tooltip content="清空所有历史对话 (最多保存10条)" placement="top">
+						<el-button v-if="aiHistory.length > 0" size="mini" type="text" class="danger-text-btn" icon="el-icon-delete" @click="clearAllAiHistory">清空历史</el-button>
+					</el-tooltip>
 					<el-tooltip :content="aiDialog.showSettings ? '隐藏配置' : '模型与 Key 配置'" placement="top">
 						<el-button size="mini" type="text" class="ai-config-toggle-btn" @click="aiDialog.showSettings = !aiDialog.showSettings">
 							<i class="el-icon-setting"></i>
@@ -661,10 +656,10 @@
 							<el-input class="modern-el-input" v-model="aiForm.apiKey" type="password" show-password placeholder="请输入您的 API Key (如 AIzaSy...)"></el-input>
 						</el-form-item>
 						<el-form-item label="AI 模型 Model">
-							<el-input class="modern-el-input" v-model="aiForm.model" placeholder="默认: gemini-1.5-flash，也可填写 gemini-3.6-flash 等"></el-input>
+							<el-input class="modern-el-input" v-model="aiForm.model" placeholder="默认: gemini-1.5-pro，也可填写 gemini-1.5-flash 等"></el-input>
 						</el-form-item>
-						<el-form-item label="提问 Prompt 预设前缀">
-							<el-input class="modern-el-input" v-model="aiForm.customPrompt" placeholder="例如: 请帮我分析以下报错/文档，并给出定位思路与解决方案："></el-input>
+						<el-form-item label="提问 Prompt 预设前缀 (深度思考提示词)">
+							<el-input class="modern-el-input" v-model="aiForm.customPrompt" placeholder="例如: 请先将你的深度排错思考过程包裹在 <think> 标签中输出，然后给出解决方案："></el-input>
 						</el-form-item>
 						<div style="text-align: right; margin-top: 12px;">
 							<el-button size="mini" type="primary" class="primary-gradient-btn" icon="el-icon-check" @click="saveAiSettings">保 存 配 置</el-button>
@@ -673,60 +668,217 @@
 				</div>
 			</transition>
 
-			<!-- 视图 1：AI 智能提问 / 对话 / 追问视图 -->
-			<div v-show="aiActiveTab === 'chat'" class="ai-chat-view-container">
-				<!-- 上下文选中文本预览 -->
-				<div v-if="aiDialog.queryText" class="ai-selected-preview">
-					<div class="preview-label">
-						<i class="el-icon-document-checked"></i> 当前划选解析上下文：
-					</div>
-					<div class="preview-text">{{ aiDialog.queryText }}</div>
-				</div>
+			<!-- 统一的无限流式原生对话视图 (增加 position: relative 供内部轨道定位) -->
+			<div class="ai-chat-view-container" style="position: relative;">
 
-				<!-- AI 回复流式展示卡片 -->
-				<div class="ai-response-card" :class="{ 'is-streaming': aiDialog.isStreaming }">
-					<div class="response-card-header">
-						<div class="header-status">
-							<span class="status-indicator" :class="{ 'pulse-active': aiDialog.isStreaming }"></span>
-							<span class="status-text">{{ aiDialog.isStreaming ? 'AI 正在实时思考生成回答...' : (aiDialog.responseText ? 'AI 解析完成' : 'AI 助手就绪') }}</span>
-						</div>
-						<div class="header-actions" v-if="aiDialog.responseText && !aiDialog.isStreaming">
-							<!-- 复制完整回答下拉框 (也同步重构为了统一弹窗样式) -->
-							<el-popover placement="bottom-end" width="160" trigger="click" :visible-arrow="false" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
-								<div class="action-menu-list">
-									<div class="action-item" @click="handleAiCopyCommand('raw')">
-										<i class="el-icon-document-copy"></i> <span>复制 MD 格式</span>
-									</div>
-									<div class="action-item" @click="handleAiCopyCommand('plain')">
-										<i class="el-icon-tickets"></i> <span>复制纯文本格式</span>
-									</div>
+				<!-- ================= 新增：右侧 AI 对话流锚点指示器轨道 ================= -->
+				<transition name="el-fade-in-linear">
+					<div class="ai-chat-scrollbar-track" v-if="aiScrollMarkers.length > 0">
+						<el-popover
+							v-for="marker in aiScrollMarkers"
+							:key="'ai-marker-' + marker.id"
+							placement="left"
+							trigger="hover"
+							width="220"
+							:popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'"
+						>
+							<div class="marker-popover-content">
+								<div class="marker-popover-title">
+									<i class="el-icon-chat-dot-square"></i>
+									<span>{{ marker.text }}</span>
 								</div>
-								<button slot="reference" class="ai-code-copy-btn" type="button" title="点击选择复制格式">
-									<i class="el-icon-document-copy"></i> 复制回答 <i class="el-icon-arrow-down el-icon--right"></i>
-								</button>
-							</el-popover>
+								<div class="marker-popover-tip" style="margin-top: 6px;">
+									<i class="el-icon-position"></i> 点击直达此条问答
+								</div>
+							</div>
+							<div
+								slot="reference"
+								class="ai-scroll-marker-item"
+								:style="{ top: marker.percent + '%' }"
+								@click.stop="scrollToAiTurn(marker.id)"
+							>
+								<span class="ai-marker-dash"></span>
+							</div>
+						</el-popover>
+					</div>
+				</transition>
+				
+				<!-- 滚动聊天区 -->
+				<div class="ai-chat-log" ref="aiResponseScrollContainer">
+					
+					<div class="chat-empty-hint" v-if="aiHistory.length === 0 && !aiDialog.responseText && !aiDialog.isStreaming">
+						<div class="ai-glow-icon large"><i class="el-icon-cpu"></i></div>
+						<h3>AI 助手已就绪</h3>
+						<p>支持多模态理解，请在下方输入报错信息、代码或截图，即可开始智能分析。</p>
+					</div>
+
+					<!-- 1. 渲染：所有历史对话记录 (绑定 id 供锚点滚动使用) -->
+					<div class="chat-turn-pair" v-for="(item, idx) in aiHistory" :key="'hist-' + (item.id || idx)" :id="'chat-turn-' + (item.id || idx)">
+						<!-- 历史：User 气泡 -->
+						<div class="chat-message user-message">
+							<div class="msg-meta">
+								<span class="msg-author">User</span> 
+								<span class="msg-time">• {{ item.timestamp }}</span>
+							</div>
+							<div class="msg-content">
+								<div v-if="item.image" class="context-image-snippet">
+									<img :src="item.image.url || item.image.preview || ''" class="snippet-thumb" />
+									<span class="snippet-name"><i class="el-icon-picture"></i> {{ item.image.name }}</span>
+								</div>
+								<div class="plain-text-query">{{ item.queryText }}</div>
+							</div>
+						</div>
+						
+						<!-- 历史：Model 气泡 -->
+						<div class="chat-message model-message">
+							<div class="msg-meta">
+								<span class="msg-author">Model</span> 
+								<span class="msg-time">• {{ item.timestamp }}</span>
+								<!-- 复制按钮 -->
+								<el-popover placement="bottom-end" width="160" trigger="click" :visible-arrow="false" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
+									<div class="action-menu-list">
+										<div class="action-item" @click="handleAiCopyCommand('raw', parseThinkAndAnswer(item.responseText).answer)">
+											<i class="el-icon-document-copy"></i> <span>复制 MD 格式</span>
+										</div>
+										<div class="action-item" @click="handleAiCopyCommand('plain', parseThinkAndAnswer(item.responseText).answer)">
+											<i class="el-icon-tickets"></i> <span>复制纯文本格式</span>
+										</div>
+									</div>
+									<i slot="reference" class="el-icon-document-copy copy-icon-btn" title="点击复制回答"></i>
+								</el-popover>
+								<i class="el-icon-delete copy-icon-btn" style="color: #ef4444; opacity: 0.6; margin-left: 10px;" @click="deleteSingleHistory(item.id)" title="删除此记录"></i>
+							</div>
+							
+							<!-- AI 思考过程折叠块 (<think> 标签解析) -->
+							<div v-if="parseThinkAndAnswer(item.responseText).think" style="margin-bottom: 12px;">
+								<div class="model-thoughts-mock" 
+									 style="cursor: pointer; justify-content: space-between;" 
+									 @click="$set(item, 'showThought', item.showThought === undefined ? false : !item.showThought)">
+									<div style="display: flex; align-items: center; gap: 8px;">
+										<i class="el-icon-magic-stick"></i> AI 深度排错思考过程
+									</div>
+									<i :class="item.showThought === false ? 'el-icon-arrow-down' : 'el-icon-arrow-up'"></i>
+								</div>
+								
+								<transition name="el-zoom-in-top">
+									<div v-show="item.showThought !== false" 
+										 class="msg-content markdown-body" 
+										 style="padding: 10px 14px; background: rgba(14, 165, 233, 0.05); border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; color: var(--text-muted);" 
+										 v-html="renderMarkdown(parseThinkAndAnswer(item.responseText).think)">
+									</div>
+								</transition>
+							</div>
+							
+							<div class="msg-content markdown-body" v-html="renderMarkdown(parseThinkAndAnswer(item.responseText).answer)"></div>
 						</div>
 					</div>
 
-					<div class="response-card-body" ref="aiResponseScrollContainer">
-						<div v-if="aiDialog.responseText" class="markdown-body ai-markdown-content" v-html="renderMarkdown(aiDialog.responseText)"></div>
-						<span v-if="aiDialog.isStreaming" class="streaming-cursor">▌</span>
-
-						<div v-if="!aiDialog.responseText && !aiDialog.isStreaming" class="ai-placeholder-text">
-							<p v-if="!aiForm.apiKey" class="warning-text"><i class="el-icon-warning"></i> 请先在右上角配置 API Key 即可启动智能问答</p>
-							<p v-else><i class="el-icon-chat-line-square"></i> 在下方输入追问内容或上传报错图片，点击发送即可与 AI 对话</p>
+					<!-- 2. 渲染：当前正在生成或刚刚生成的会话 (也加上特殊 id) -->
+					<div class="chat-turn-pair" id="chat-turn-current" v-if="aiDialog.isStreaming || aiDialog.responseText">
+						
+						<!-- 当前：User 气泡 -->
+						<div class="chat-message user-message">
+							<div class="msg-meta">
+								<span class="msg-author">User</span> 
+								<span class="msg-time">• 刚刚</span>
+							</div>
+							<div class="msg-content">
+								<!-- 图文同框：如果有图片附件 -->
+								<div v-if="aiDialog.currentImage" class="context-image-snippet">
+									<img :src="aiDialog.currentImage.url || aiDialog.currentImage.preview || ''" class="snippet-thumb" />
+									<span class="snippet-name"><i class="el-icon-picture"></i> {{ aiDialog.currentImage.name }}</span>
+								</div>
+								<!-- 用户的问题文本 -->
+								<div class="plain-text-query">{{ (aiDialog.currentContext ? '【划选上下文】\n' + aiDialog.currentContext + '\n\n' : '') + (aiDialog.currentQuery || '...') }}</div>
+							</div>
+						</div>
+						
+						<!-- 当前：Model 气泡 -->
+						<div class="chat-message model-message">
+							<div class="msg-meta">
+								<span class="msg-author">Model</span> 
+								<span class="msg-time" :class="{ 'is-pulsing': aiDialog.isStreaming }">
+									• {{ aiDialog.isStreaming ? '正在思考生成中...' : '刚刚' }}
+								</span>
+								
+								<!-- 当前气泡的复制按钮 -->
+								<el-popover v-if="!aiDialog.isStreaming && parseThinkAndAnswer(aiDialog.responseText).answer" placement="bottom-end" width="160" trigger="click" :visible-arrow="false" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
+									<div class="action-menu-list">
+										<div class="action-item" @click="handleAiCopyCommand('raw', parseThinkAndAnswer(aiDialog.responseText).answer)">
+											<i class="el-icon-document-copy"></i> <span>复制 MD 格式</span>
+										</div>
+										<div class="action-item" @click="handleAiCopyCommand('plain', parseThinkAndAnswer(aiDialog.responseText).answer)">
+											<i class="el-icon-tickets"></i> <span>复制纯文本格式</span>
+										</div>
+									</div>
+									<i slot="reference" class="el-icon-document-copy copy-icon-btn" title="点击复制回答"></i>
+								</el-popover>
+							</div>
+							
+							<!-- 当前生成时的 Thoughts 解析 -->
+							<div v-if="parseThinkAndAnswer(aiDialog.responseText).think || aiDialog.isStreaming" style="margin-bottom: 12px;">
+								<div class="model-thoughts-mock" 
+									 style="cursor: pointer; justify-content: space-between;" 
+									 @click="$set(aiDialog, 'showThought', aiDialog.showThought === undefined ? false : !aiDialog.showThought)">
+									<div style="display: flex; align-items: center; gap: 8px;">
+										<i :class="aiDialog.isStreaming && !parseThinkAndAnswer(aiDialog.responseText).answer ? 'el-icon-loading' : 'el-icon-magic-stick'"></i> 
+										{{ aiDialog.isStreaming && !parseThinkAndAnswer(aiDialog.responseText).answer ? 'Thinking process active...' : 'AI 深度排错思考过程' }}
+									</div>
+									<i :class="aiDialog.showThought === false ? 'el-icon-arrow-down' : 'el-icon-arrow-up'"></i>
+								</div>
+								
+								<transition name="el-zoom-in-top">
+									<div v-show="aiDialog.showThought !== false && parseThinkAndAnswer(aiDialog.responseText).think" 
+										 class="msg-content markdown-body" 
+										 style="padding: 10px 14px; background: rgba(14, 165, 233, 0.05); border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; color: var(--text-muted);" 
+										 v-html="renderMarkdown(parseThinkAndAnswer(aiDialog.responseText).think)">
+									</div>
+								</transition>
+							</div>
+							
+							<!-- 当前回答正文 -->
+							<div class="msg-content markdown-body">
+								<div v-if="parseThinkAndAnswer(aiDialog.responseText).answer" v-html="renderMarkdown(parseThinkAndAnswer(aiDialog.responseText).answer)"></div>
+								<span v-if="aiDialog.isStreaming && parseThinkAndAnswer(aiDialog.responseText).answer" class="streaming-cursor">▌</span>
+							</div>
 						</div>
 					</div>
+
 				</div>
 
-				<!-- 底部交互式输入追问框 & 上传图片/工具单排栏 -->
+				<!-- 底部交互式输入追问框 & 工具栏 -->
 				<div class="ai-input-composer">
+					<!-- 当存在划选文本，且还没发出去时，悬浮在输入框上面作为提示 -->
+					<transition name="el-zoom-in-bottom">
+						<div v-if="aiDialog.queryText && !aiDialog.isStreaming && !aiDialog.responseText" class="composer-context-preview">
+							<div class="preview-label"><i class="el-icon-document-checked"></i> 当前划选上下文：</div>
+							<div class="preview-text">{{ aiDialog.queryText }}</div>
+							<i class="el-icon-close close-context-btn" @click="aiDialog.queryText = ''"></i>
+						</div>
+					</transition>
+
+					<!-- 本地图片选中时的悬浮预览 -->
+					<transition name="el-zoom-in-bottom">
+						<div v-if="aiSelectedImage" class="composer-image-preview-wrapper">
+							<div class="preview-thumb-box" :title="aiSelectedImage.name">
+								<img :src="aiSelectedImage.url || aiSelectedImage.preview || ''" class="preview-img-content" />
+								<div class="preview-remove-mask" @click.stop="removeSelectedAiImage" title="点击移除图片">
+									<i class="el-icon-delete"></i>
+								</div>
+							</div>
+							<div class="preview-img-meta">
+								<span class="preview-img-name"><i class="el-icon-picture"></i> {{ aiSelectedImage.name }}</span>
+								<span class="preview-img-status">已准备好发送给 AI 解析</span>
+							</div>
+						</div>
+					</transition>
+
 					<div class="composer-textarea-wrapper">
 						<el-input 
 							type="textarea" 
 							:autosize="{ minRows: 2, maxRows: 5 }" 
 							v-model="aiInputQuery" 
-							placeholder="输入追问、代码或报错提示..." 
+							placeholder="输入提问、报错提示或粘贴代码..." 
 							class="modern-el-input composer-textarea"
 							@keyup.enter.native="handleComposerEnter"
 						></el-input>
@@ -737,17 +889,9 @@
 							<el-tooltip :content="aiSelectedImage ? '更换分析图片' : '上传图片/截图分析'" placement="top">
 								<div class="pill-tool-btn" :class="{ 'has-file': !!aiSelectedImage }" @click="triggerAiImageUpload">
 									<i class="el-icon-picture-outline"></i>
-									<span>{{ aiSelectedImage ? '已选图片' : '上传图片' }}</span>
+									<span>{{ aiSelectedImage ? '更换图片' : '上传图片' }}</span>
 								</div>
 							</el-tooltip>
-
-							<transition name="el-zoom-in-top">
-								<div v-if="aiSelectedImage" class="ai-active-pill-chip">
-									<i class="el-icon-image"></i>
-									<span class="chip-text" :title="aiSelectedImage.name">{{ aiSelectedImage.name }}</span>
-									<i class="el-icon-close remove-chip-btn" @click.stop="removeSelectedAiImage" title="移除图片"></i>
-								</div>
-							</transition>
 
 							<div class="tool-divider" v-if="!aiSelectedImage"></div>
 
@@ -782,48 +926,6 @@
 								<i class="el-icon-video-pause"></i>
 								<span>停止生成</span>
 							</button>
-						</div>
-					</div>
-				</div>
-			</div>
-
-			<!-- 视图 2：AI 历史提问与回复列表 -->
-			<div v-show="aiActiveTab === 'history'" class="ai-history-view-container">
-				<div class="history-list-header">
-					<span class="history-count-title"><i class="el-icon-history"></i> 本地问答历史 ({{ aiHistory.length }}/10 条)</span>
-					<el-button v-if="aiHistory.length > 0" size="mini" type="text" class="danger-text-btn" icon="el-icon-delete" @click="clearAllAiHistory">清空全部历史</el-button>
-				</div>
-
-				<div class="history-card-list">
-					<div v-if="aiHistory.length === 0" class="history-empty-hint">
-						<i class="el-icon-notebook-2"></i>
-						<span>暂无保存的 AI 历史提问记录</span>
-					</div>
-
-					<div 
-						v-for="(item, idx) in aiHistory" 
-						:key="item.id || idx" 
-						class="history-item-card"
-						:class="{ 'is-active-history': currentActiveHistoryId === item.id }"
-					>
-						<div class="history-item-top">
-							<div class="history-title-group">
-								<span class="history-index-tag">#{{ idx + 1 }}</span>
-								<span class="history-time">{{ item.timestamp }}</span>
-							</div>
-							<div class="history-actions-group">
-								<el-button size="mini" type="text" icon="el-icon-right" @click="loadHistoryToChat(item)">查看/载入追问</el-button>
-								<el-button size="mini" type="text" class="danger-text-btn" icon="el-icon-close" @click="deleteSingleHistory(item.id)"></el-button>
-							</div>
-						</div>
-
-						<div class="history-query-snippet">
-							<strong>问：</strong> {{ item.queryText }}
-							<span v-if="item.image" class="history-image-tag"><i class="el-icon-picture-outline"></i> 含图片</span>
-						</div>
-
-						<div class="history-response-snippet">
-							<strong>答：</strong> {{ getPlainSummary(item.responseText) }}
 						</div>
 					</div>
 				</div>
@@ -1468,24 +1570,30 @@ export default {
 				left: 0,
 				selectedText: ''
 			},
-			aiActiveTab: 'chat', // 'chat' | 'history'
 			aiForm: {
 				apiKey: localStorage.getItem('ai_api_key') || '',
-				model: localStorage.getItem('ai_model') || 'gemini-1.5-flash',
-				customPrompt: localStorage.getItem('ai_custom_prompt') || '请帮我分析以下报错/文档，并给出具体的排查定位思路与解决方案：'
+				model: localStorage.getItem('ai_model') || 'gemini-1.5-pro',
+				customPrompt: localStorage.getItem('ai_custom_prompt') || '你是一个资深运维架构师。请先将你的深度排错思考过程包裹在 <think> 和 </think> 标签中输出，然后再给出最终的解决方案：'
 			},
+			// 统一对话流状态维护
 			aiDialog: {
 				visible: false,
 				isStreaming: false,
 				showSettings: false,
-				queryText: '',
-				responseText: ''
+				queryText: '', 
+				responseText: '', 
+				currentQuery: '', 
+				currentContext: '', 
+				currentImage: null,
+				showThought: true 
 			},
-			aiInputQuery: '', // 手动追问输入框文本
-			aiSelectedImage: null, // { name: '', mimeType: '', base64: '', previewUrl: '' }
+			aiInputQuery: '', 
+			aiSelectedImage: null, 
 			aiHistory: Array.isArray(initialAiHistory) ? initialAiHistory : [],
-			currentActiveHistoryId: null,
 			aiAbortController: null,
+			
+			// 新增：AI 对话流的右侧锚点轨道数据
+			aiScrollMarkers: [],
 
 			// ======== 附件右键快捷菜单状态 ========
 			contextMenuVisible: false,
@@ -1552,7 +1660,7 @@ export default {
 		}
 	},
 	computed: {
-		// 计算 AI 提问是否具备发送条件（有文字输入或已选择图片）
+		// 计算 AI 提问是否具备发送条件
 		canSendAiQuery() {
 			const hasText = !!(this.aiInputQuery && this.aiInputQuery.trim().length > 0);
 			const hasImg = !!this.aiSelectedImage;
@@ -1729,24 +1837,137 @@ export default {
 		await this.fetchData();
 	},
 	methods: {
+		// 【增强版】分离 <think> 标签与真实答案 (自动处理残留的 Unicode 转义符)
+		parseThinkAndAnswer(rawText) {
+			if (!rawText) return { think: '', answer: '' };
+			
+			// 解决 Gemini 接口中 \u003c 导致的解析失败问题
+			let text = rawText.replace(/\\u003c/gi, '<').replace(/\\u003e/gi, '>');
+			// 兼容某些模型输出大写标签的情况
+			text = text.replace(/<THINK>/gi, '<think>').replace(/<\/THINK>/gi, '</think>');
+			
+			const thinkStart = text.indexOf('<think>');
+			const thinkEnd = text.indexOf('</think>');
+			
+			if (thinkStart !== -1) {
+				if (thinkEnd !== -1) {
+					// 提取包含首尾的完整思考块
+					return {
+						think: text.substring(thinkStart + 7, thinkEnd).trim(),
+						answer: text.substring(thinkEnd + 8).trim()
+					};
+				} else {
+					// 正在流式生成思考中，此时整个文本都是思考过程
+					return {
+						think: text.substring(thinkStart + 7).trim(),
+						answer: ''
+					};
+				}
+			}
+			
+			// 没有匹配到 think 标签，全部作为最终答案
+			return { think: '', answer: text };
+		},
+
+		// ======== 恢复丢失的主阅读区锚点计算方法 ========
+		updateScrollMarkers() {
+			if (this.isMobile) return;
+			this.$nextTick(() => {
+				const container = this.$refs.mainScrollContainer || this.$el.querySelector('.bp-main');
+				if (!container || !this.paginatedProblems || this.paginatedProblems.length === 0) {
+					this.scrollMarkers = [];
+					return;
+				}
+
+				const scrollHeight = container.scrollHeight;
+				if (scrollHeight <= 0) return;
+
+				const markers = [];
+				this.paginatedProblems.forEach(prob => {
+					const el = document.getElementById('problem-card-' + prob.id);
+					if (el) {
+						const topPos = el.offsetTop;
+						let percent = (topPos / scrollHeight) * 100;
+						percent = Math.min(Math.max(percent, 3), 97); // 限制在可视范围内
+
+						markers.push({
+							id: prob.id,
+							title: prob.title,
+							solution: prob.solution,
+							topPercent: percent.toFixed(2)
+						});
+					}
+				});
+				this.scrollMarkers = markers;
+			});
+		},
+
+		// ======== AI 面板右侧轨道锚点计算 ========
+		updateAiScrollMarkers() {
+			this.$nextTick(() => {
+				const container = this.$refs.aiResponseScrollContainer;
+				if (!container) {
+					this.aiScrollMarkers = [];
+					return;
+				}
+				const scrollHeight = container.scrollHeight;
+				if (scrollHeight <= 0) return;
+
+				const markers = [];
+				this.aiHistory.forEach((item, idx) => {
+					const el = document.getElementById('chat-turn-' + (item.id || idx));
+					if (el) {
+						let percent = (el.offsetTop / scrollHeight) * 100;
+						percent = Math.min(Math.max(percent, 2), 98); // 限制在可视范围内
+						
+						let shortTitle = this.getPlainSummary(item.queryText);
+						if (shortTitle.includes('【划选上下文】')) {
+							shortTitle = shortTitle.replace(/【划选上下文】[\s\S]*?【我的提问】：/g, '').trim() || '快捷解析追问';
+						}
+
+						markers.push({
+							id: item.id || idx,
+							text: shortTitle,
+							percent: percent.toFixed(2)
+						});
+					}
+				});
+				this.aiScrollMarkers = markers;
+			});
+		},
+
+		scrollToAiTurn(id) {
+			const container = this.$refs.aiResponseScrollContainer;
+			const el = document.getElementById('chat-turn-' + id);
+			if (container && el) {
+				container.scrollTo({
+					top: el.offsetTop - 10,
+					behavior: 'smooth'
+				});
+			}
+		},
+
 		// ======== 复制 AI 完整回答（支持 MD / 纯文本 两种选择） ========
-		handleAiCopyCommand(command) {
-			if (!this.aiDialog.responseText) {
+		handleAiCopyCommand(command, text) {
+			const sourceText = text || this.aiDialog.responseText;
+			if (!sourceText) {
 				this.showToast('暂无 AI 解答内容');
 				return;
 			}
 			if (command === 'raw') {
-				this.copySolution(this.aiDialog.responseText, '已复制 AI 回答 (Markdown 格式)');
+				this.copySolution(sourceText, '已复制 AI 回答 (Markdown 格式)');
 			} else if (command === 'plain') {
-				const plainText = this.convertMarkdownToPlainText(this.aiDialog.responseText);
+				const plainText = this.convertMarkdownToPlainText(sourceText);
 				this.copySolution(plainText, '已复制 AI 回答 (纯文本格式)');
 			}
 		},
 
 		// ======== 浮动 AI 悬浮球 & 划选提问核心逻辑 ========
 		openAiDialogFromFab() {
-			this.aiActiveTab = this.aiHistory.length > 0 ? 'history' : 'chat';
 			this.aiDialog.visible = true;
+			this.$nextTick(() => {
+				this.scrollAiContentToBottom();
+			});
 		},
 
 		handleDocumentMouseDown(e) {
@@ -1793,17 +2014,17 @@ export default {
 			this.aiTooltip.visible = false;
 			if (!query) return;
 
-			this.aiDialog.queryText = query;
-			this.aiDialog.responseText = '';
-			this.aiActiveTab = 'chat';
-			this.currentActiveHistoryId = Date.now();
+			this.aiDialog.queryText = query; // 将划选内容保存到 input-composer 上方的提示区
 			this.aiDialog.visible = true;
+			this.$nextTick(() => {
+				this.scrollAiContentToBottom();
+			});
 
 			if (!this.aiForm.apiKey) {
 				this.aiDialog.showSettings = true;
 				this.showToast('请配置 Gemini API Key 以开启流式智能排错');
 			} else {
-				this.sendAiQueryStream(true);
+				this.sendAiQueryStream();
 			}
 		},
 
@@ -1812,38 +2033,29 @@ export default {
 			this.$refs.aiImageFileInput.click();
 		},
 
-		handleAiImageSelect(e) {
-			const file = e.target.files[0];
+		handleAiImageSelect(event) {
+			const file = event.target.files[0];
 			if (!file) return;
 
-			if (!file.type.startsWith('image/')) {
-				this.showToast('请选择有效的图片文件');
-				e.target.value = '';
-				return;
-			}
+			const safePreviewUrl = URL.createObjectURL(file);
 
-			if (file.size > 10 * 1024 * 1024) {
-				this.showToast('图片大小限制在 10MB 以内');
-				e.target.value = '';
-				return;
-			}
-
-			const reader = new FileReader();
-			reader.onload = (event) => {
-				const dataUrl = event.target.result || '';
-				const mimeType = file.type || 'image/png';
-				const rawBase64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
-
-				this.aiSelectedImage = {
-					name: file.name,
-					mimeType: mimeType,
-					base64: rawBase64,
-					previewUrl: dataUrl
-				};
-				this.showToast(`图片【${file.name}】已导入，将用于图文联合分析`);
-				e.target.value = '';
+			this.aiSelectedImage = {
+				file: file,          // 存入原生 File 对象，留着等用户点"发送"时再用
+				name: file.name,     
+				url: safePreviewUrl  // 极速预览缩略图的本地 URL
 			};
-			reader.readAsDataURL(file);
+
+			this.$refs.aiImageFileInput.value = '';
+		},
+
+		// 辅助方法：只在发送请求时，才将 File 转为 Base64 字符串
+		fileToBase64(file) {
+			return new Promise((resolve, reject) => {
+				const reader = new FileReader();
+				reader.readAsDataURL(file);
+				reader.onload = () => resolve(reader.result);
+				reader.onerror = error => reject(error);
+			});
 		},
 
 		removeSelectedAiImage() {
@@ -1860,15 +2072,15 @@ export default {
 					this.showToast('请输入追问内容或选择分析图片');
 					return;
 				}
-				this.sendAiQueryStream(false);
+				this.sendAiQueryStream();
 			}
 		},
 
 		applyPromptPreset(type) {
 			if (type === '详细排错分析') {
-				this.aiForm.customPrompt = '请详细分析以下报错信息/排错日志，给出底层根本原因与逐步解决步骤：';
+				this.aiForm.customPrompt = '你是一个资深运维架构师。请先将你的深度排错思考过程包裹在 <think> 和 </think> 标签中输出，然后再给出最终的排错思路与解决方案：';
 			} else if (type === '代码优化与修复') {
-				this.aiForm.customPrompt = '请检查并优化以下代码，列出潜藏风险并提供修复后的完整代码块：';
+				this.aiForm.customPrompt = '你是一个高级研发。请先在 <think> 标签中反思这些代码的潜藏风险，然后给出优化修复后的完整代码块：';
 			} else if (type === '简明原因总结') {
 				this.aiForm.customPrompt = '请用最简明扼要的 3 句话总结以下文档的核心结论与解决要点：';
 			} else if (type === '英文日志翻译') {
@@ -1884,63 +2096,51 @@ export default {
 			}
 
 			localStorage.setItem('ai_api_key', this.aiForm.apiKey.trim());
-			localStorage.setItem('ai_model', this.aiForm.model.trim() || 'gemini-1.5-flash');
+			localStorage.setItem('ai_model', this.aiForm.model.trim() || 'gemini-1.5-pro');
 			localStorage.setItem('ai_custom_prompt', this.aiForm.customPrompt.trim());
 
 			this.aiDialog.showSettings = false;
 			this.showToast('AI 配置已成功持久化保存！');
 
-			if ((this.aiDialog.queryText || this.aiInputQuery) && !this.aiDialog.responseText) {
-				this.sendAiQueryStream(false);
+			if ((this.aiDialog.queryText || this.aiInputQuery || this.aiSelectedImage) && !this.aiDialog.responseText) {
+				this.sendAiQueryStream();
 			}
 		},
 
-		// ======== AI 历史记录持久化保存（最多 10 条 FIFO）========
+		// ======== AI 历史记录持久化保存（最多 10 条 数组末尾为最新）========
 		saveAiHistoryRecord(record) {
-			if (!record || !record.queryText || !record.responseText) return;
+			if (!record || (!record.queryText && !record.image) || !record.responseText) return;
 
 			let historyList = [...this.aiHistory];
-			const existingIndex = historyList.findIndex(item => item.id === record.id);
+			// 统一流中直接推进数组末尾
+			historyList.push(record);
 
-			if (existingIndex !== -1) {
-				historyList.splice(existingIndex, 1, record);
-			} else {
-				historyList.unshift(record);
-			}
-
-			// FIFO 淘汰原则：最多保留 10 条最新问答
+			// 淘汰原则：最多保留 10 条最新问答
 			if (historyList.length > 10) {
-				historyList = historyList.slice(0, 10);
+				historyList = historyList.slice(historyList.length - 10);
 			}
 
 			this.aiHistory = historyList;
 			localStorage.setItem('trouble_docs_ai_history', JSON.stringify(historyList));
-		},
-
-		loadHistoryToChat(item) {
-			if (!item) return;
-			this.aiDialog.queryText = item.queryText;
-			this.aiDialog.responseText = item.responseText;
-			this.aiSelectedImage = item.image || null;
-			this.currentActiveHistoryId = item.id;
-			this.aiActiveTab = 'chat';
-			this.scrollAiContentToBottom();
+			this.updateAiScrollMarkers();
 		},
 
 		deleteSingleHistory(id) {
 			this.aiHistory = this.aiHistory.filter(item => item.id !== id);
 			localStorage.setItem('trouble_docs_ai_history', JSON.stringify(this.aiHistory));
+			this.updateAiScrollMarkers();
 			this.showToast('该条历史问答已删除');
 		},
 
 		clearAllAiHistory() {
-			MessageBox.confirm('确定要清空全部 10 条 AI 问答历史吗?', '清空提示', {
+			MessageBox.confirm('确定要清空全部 AI 问答历史吗?', '清空提示', {
 				confirmButtonText: '确定清空',
 				cancelButtonText: '取消',
 				type: 'warning'
 			}).then(() => {
 				this.aiHistory = [];
 				localStorage.removeItem('trouble_docs_ai_history');
+				this.updateAiScrollMarkers();
 				this.showToast('已清空全部历史记录');
 			}).catch(() => {});
 		},
@@ -1963,6 +2163,7 @@ export default {
 				const container = this.$refs.aiResponseScrollContainer;
 				if (container) {
 					container.scrollTop = container.scrollHeight;
+					this.updateAiScrollMarkers();
 				}
 			});
 		},
@@ -1970,138 +2171,140 @@ export default {
 		/**
 		 * 核心：Gemini API SSE 流式输出推流与多模态识图发送
 		 */
-		async sendAiQueryStream(isNewSelection = false) {
-			if (!this.aiForm.apiKey.trim()) {
+		async sendAiQueryStream() {
+			if (!this.aiForm.apiKey) {
+				this.$message.warning("请先在右上角配置 Gemini API Key");
 				this.aiDialog.showSettings = true;
-				this.showToast('请先填写 API Key');
 				return;
 			}
 
-			let activeQuery = '';
-			if (isNewSelection) {
-				activeQuery = this.aiDialog.queryText;
-			} else if (this.aiInputQuery.trim()) {
-				activeQuery = this.aiInputQuery.trim();
-				this.aiDialog.queryText = activeQuery;
-			} else {
-				activeQuery = this.aiDialog.queryText;
+			// 状态转移：将底部的输入框内容“快照”到当前的生成流对象中
+			this.aiDialog.currentQuery = this.aiInputQuery;
+			this.aiDialog.currentContext = this.aiDialog.queryText;
+			this.aiDialog.currentImage = this.aiSelectedImage;
+
+			// 清空底部输入区，方便用户继续输入下一句
+			this.aiInputQuery = "";
+			this.aiDialog.queryText = "";
+			this.aiSelectedImage = null;
+
+			// 拼接 Prompt 提示词
+			let finalPrompt = "";
+			if (this.aiForm.customPrompt) finalPrompt += this.aiForm.customPrompt + "\n\n";
+			if (this.aiDialog.currentContext) finalPrompt += "【上下文代码或报错内容】:\n" + this.aiDialog.currentContext + "\n\n";
+			finalPrompt += "【我的提问】:\n" + (this.aiDialog.currentQuery || "请帮我分析解答");
+
+			// 初始化 parts 数组
+			const parts = [{ text: finalPrompt }];
+
+			// 如果上传了图片，转 Base64 后插入到请求体 parts 中
+			if (this.aiDialog.currentImage && this.aiDialog.currentImage.file) {
+				try {
+					const base64String = await this.fileToBase64(this.aiDialog.currentImage.file);
+					const pureBase64Data = base64String.split(',')[1];
+					parts.push({
+						inline_data: {
+							mime_type: this.aiDialog.currentImage.file.type || 'image/jpeg',
+							data: pureBase64Data
+						}
+					});
+				} catch (err) {
+					this.$message.error("图片解析失败");
+					return;
+				}
 			}
 
-			if (!activeQuery && !this.aiSelectedImage) {
-				this.showToast('请输入追问内容或选择分析图片');
-				return;
-			}
-
-			this.abortAiStream();
-			this.aiAbortController = new AbortController();
+			const modelName = this.aiForm.model || 'gemini-1.5-pro';
+			const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?key=${this.aiForm.apiKey}`;
+			const payload = { contents: [{ parts: parts }] };
 
 			this.aiDialog.isStreaming = true;
-			this.aiDialog.responseText = '';
-			this.aiActiveTab = 'chat';
+			this.aiDialog.responseText = "";
 
-			const recordId = this.currentActiveHistoryId || Date.now();
-			this.currentActiveHistoryId = recordId;
-
-			const modelName = this.aiForm.model.trim() || 'gemini-1.5-flash';
-			const apiKey = this.aiForm.apiKey.trim();
-			const promptPrefix = this.aiForm.customPrompt || '请帮我分析以下报错/文档，并给出定位思路与解决方案：';
-
-			const fullPromptText = `${promptPrefix}\n\n${activeQuery}`;
-
-			// 构建 Gemini 请求的 parts (支持文本 + 图片 multimodal)
-			const partsPayload = [
-				{ text: fullPromptText }
-			];
-
-			if (this.aiSelectedImage && this.aiSelectedImage.base64) {
-				partsPayload.push({
-					inlineData: {
-						mimeType: this.aiSelectedImage.mimeType || 'image/png',
-						data: this.aiSelectedImage.base64
-					}
-				});
-			}
-
-			const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?alt=sse&key=${apiKey}`;
-
-			const payload = {
-				contents: [{
-					parts: partsPayload
-				}]
-			};
+			// 立即滚动到底部，展示 User 的气泡
+			this.scrollAiContentToBottom();
 
 			try {
-				const response = await fetch(endpoint, {
+				const response = await fetch(url, {
 					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json'
-					},
-					body: JSON.stringify(payload),
-					signal: this.aiAbortController.signal
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(payload)
 				});
 
 				if (!response.ok) {
-					const errorData = await response.json().catch(() => ({}));
-					throw new Error(errorData?.error?.message || `HTTP ${response.status}`);
-				}
-
-				if (!response.body) {
-					throw new Error('浏览器未返回可读数据流');
+					let errorText = response.statusText || "请求被拒绝";
+					try {
+						const errData = await response.json();
+						if (errData && errData.error && errData.error.message) {
+							errorText = errData.error.message;
+						} else if (errData && errData.message) {
+							errorText = errData.message;
+						} else {
+							errorText = JSON.stringify(errData);
+						}
+					} catch (parseErr) {}
+					throw new Error(`API 接口报错: ${errorText}`);
 				}
 
 				const reader = response.body.getReader();
-				const decoder = new TextDecoder('utf-8');
-				let buffer = '';
+				const decoder = new TextDecoder("utf-8");
+				let done = false;
 
-				while (true) {
-					const { done, value } = await reader.read();
-					if (done) break;
-
-					buffer += decoder.decode(value, { stream: true });
-					const lines = buffer.split('\n');
-					buffer = lines.pop() || '';
-
-					for (const line of lines) {
-						const trimmed = line.trim();
-						if (trimmed.startsWith('data: ')) {
-							const jsonStr = trimmed.replace(/^data:\s*/, '');
-							if (jsonStr === '[DONE]') continue;
-
-							try {
-								const parsed = JSON.parse(jsonStr);
-								const chunkText = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
-								if (chunkText) {
-									this.aiDialog.responseText += chunkText;
-									this.scrollAiContentToBottom();
-								}
-							} catch (e) {
-								// 解析部分 JSON 片段异常容错
-							}
+				while (!done) {
+					const { value, done: readerDone } = await reader.read();
+					done = readerDone;
+					if (value) {
+						const chunkText = decoder.decode(value, { stream: true });
+						const textMatches = [...chunkText.matchAll(/"text"\s*:\s*"([^]*?)"/g)];
+						for (const match of textMatches) {
+							
+							// 【增强】：直接在流解析时将 Unicode 的尖括号替换回实体
+							let parsedText = match[1]
+								.replace(/\\n/g, '\n')
+								.replace(/\\"/g, '"')
+								.replace(/\\\\/g, '\\')
+								.replace(/\\r/g, '\r')
+								.replace(/\\t/g, '\t')
+								.replace(/\\u003c/gi, '<')
+								.replace(/\\u003e/gi, '>')
+								.replace(/\\u0026/gi, '&')
+								.replace(/\\u0027/gi, "'");
+							
+							this.aiDialog.responseText += parsedText;
+							this.scrollAiContentToBottom();
 						}
 					}
 				}
-
-				if (!this.aiDialog.responseText) {
-					this.aiDialog.responseText = 'AI 未能生成有效的解答内容，请尝试重新提问。';
-				}
-
-				// 保存到 10 条 FIFO 历史记录中
-				this.saveAiHistoryRecord({
-					id: recordId,
-					queryText: activeQuery,
-					responseText: this.aiDialog.responseText,
-					image: this.aiSelectedImage ? { ...this.aiSelectedImage } : null,
-					timestamp: getFormattedDateTime()
-				});
-
-				this.aiInputQuery = '';
-			} catch (err) {
-				if (err.name === 'AbortError') return;
-				console.error('sendAiQueryStream error:', err);
-				this.aiDialog.responseText = `**请求发生异常：** ${err.message || '网络连接超时，请检查 Key 或网络代理'}`;
+			} catch (error) {
+				this.aiDialog.responseText += `\n\n❌ **请求中断:** ${error.message}`;
+				this.scrollAiContentToBottom();
 			} finally {
 				this.aiDialog.isStreaming = false;
-				this.aiAbortController = null;
+				
+				// 对话结束，把完整的对话流推入历史记录中归档
+				let formattedQuery = this.aiDialog.currentQuery;
+				if (this.aiDialog.currentContext) {
+					formattedQuery = `【划选上下文】\n${this.aiDialog.currentContext}\n\n【我的提问】：\n` + formattedQuery;
+				}
+
+				this.saveAiHistoryRecord({
+					id: Date.now(),
+					timestamp: getFormattedDateTime(),
+					queryText: formattedQuery,
+					image: this.aiDialog.currentImage,
+					responseText: this.aiDialog.responseText,
+					showThought: false // 归档后默认折叠思绪
+				});
+
+				// 清空 current 工作区，让页面回退到靠 v-for 循环显示刚刚那条数据的状态（无缝衔接）
+				this.aiDialog.responseText = "";
+				this.aiDialog.currentQuery = "";
+				this.aiDialog.currentContext = "";
+				this.aiDialog.currentImage = null;
+
+				this.$nextTick(() => {
+					this.scrollAiContentToBottom();
+				});
 			}
 		},
 
@@ -3449,38 +3652,6 @@ export default {
 			this.getProblems(1);
 		},
 
-		updateScrollMarkers() {
-			if (this.isMobile) return;
-			this.$nextTick(() => {
-				const container = this.$refs.mainScrollContainer || this.$el.querySelector('.bp-main');
-				if (!container || !this.paginatedProblems || this.paginatedProblems.length === 0) {
-					this.scrollMarkers = [];
-					return;
-				}
-
-				const scrollHeight = container.scrollHeight;
-				if (scrollHeight <= 0) return;
-
-				const markers = [];
-				this.paginatedProblems.forEach(prob => {
-					const el = document.getElementById('problem-card-' + prob.id);
-					if (el) {
-						const topPos = el.offsetTop;
-						let percent = (topPos / scrollHeight) * 100;
-						percent = Math.min(Math.max(percent, 3), 97);
-
-						markers.push({
-							id: prob.id,
-							title: prob.title,
-							solution: prob.solution,
-							topPercent: percent.toFixed(2)
-						});
-					}
-				});
-				this.scrollMarkers = markers;
-			});
-		},
-
 		canManageShare(item) {
 			if (!item) return false;
 			const curUser = this.currentUser;
@@ -4224,16 +4395,6 @@ export default {
 			return clean;
 		},
 
-		handleCopyCommand(command, solutionText) {
-			if (!solutionText) return;
-			if (command === 'raw') {
-				this.copySolution(solutionText, '原文内容已成功复制到剪贴板');
-			} else if (command === 'plain') {
-				const plainText = this.convertMarkdownToPlainText(solutionText);
-				this.copySolution(plainText, '纯文本无格式内容已成功复制到剪贴板');
-			}
-		},
-
 		copySolution(text, customToastMsg = '内容已成功复制到剪贴板') {
 			if (!text) return;
 			if (navigator.clipboard && window.isSecureContext) {
@@ -4582,7 +4743,7 @@ export default {
 	box-shadow: 0 6px 20px rgba(14, 165, 233, 0.65);
 }
 
-/* ================= 右键附件快捷上下文菜单 (修复截图 1 底部撑满拉伸问题) ================= */
+/* ================= 右键附件快捷上下文菜单 ================= */
 .custom-context-menu-popover {
 	position: fixed !important;
 	z-index: 99999 !important;
@@ -4596,7 +4757,7 @@ export default {
 .ai-floating-fab {
 	position: fixed;
 	right: 36px;
-	bottom: 140px; /* 提升高度，避开底部置顶悬浮栏 */
+	bottom: 140px;
 	width: 48px;
 	height: 48px;
 	border-radius: 50%;
@@ -4677,6 +4838,13 @@ export default {
 	box-shadow: 0 0 14px rgba(14, 165, 233, 0.5);
 }
 
+.ai-glow-icon.large {
+	width: 48px;
+	height: 48px;
+	font-size: 24px;
+	margin: 0 auto 16px auto;
+}
+
 .title-text {
 	font-size: 16px;
 	font-weight: 700;
@@ -4700,45 +4868,10 @@ export default {
 	gap: 12px;
 }
 
-/* 仿截图 Models/Agents 高颜值胶囊 Pill 切页滑块 */
-.ai-pill-switch {
-	display: inline-flex;
-	align-items: center;
-	background-color: var(--hover-sidebar);
-	border: 1px solid var(--border-color);
-	padding: 3px;
-	border-radius: 20px;
-	gap: 2px;
-	user-select: none;
-}
-
-.pill-item {
-	font-size: 12px;
-	font-weight: 600;
-	color: var(--text-muted);
-	padding: 5px 14px;
-	border-radius: 16px;
-	cursor: pointer;
-	transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-	display: flex;
-	align-items: center;
-	gap: 6px;
-}
-
-.pill-item:hover {
-	color: var(--text-p);
-}
-
-.pill-item.active {
-	background-color: var(--bg-card);
-	color: var(--primary-blue);
-	box-shadow: var(--shadow-sm);
-}
-
-.bp-wrapper.is-dark .pill-item.active {
-	background-color: #27272a;
-	color: #f8fafc;
-	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+.danger-text-btn {
+	color: #ef4444 !important;
+	padding: 0 !important;
+	font-size: 12px !important;
 }
 
 .ai-config-toggle-btn {
@@ -4772,131 +4905,212 @@ export default {
 	color: var(--text-muted);
 }
 
+/* ================= 统一无限流原生对话面板 CSS ================= */
 .ai-chat-view-container {
 	display: flex;
 	flex-direction: column;
 	gap: 14px;
+	height: 60vh;
+	min-height: 400px;
 }
 
-.ai-selected-preview {
-	background-color: var(--bg-app);
-	border: 1px dashed var(--primary-blue);
-	border-radius: 10px;
-	padding: 10px 14px;
+/* AI 对话流的右侧锚点导航样式 */
+.ai-chat-scrollbar-track {
+	position: absolute;
+	right: 0px;
+	top: 10px;
+	bottom: 180px; 
+	width: 16px;
+	z-index: 50;
+	pointer-events: none;
 }
 
-.preview-label {
-	font-size: 12px;
-	font-weight: 700;
-	color: var(--primary-blue);
-	margin-bottom: 4px;
+.ai-scroll-marker-item {
+	position: absolute;
+	right: 4px;
+	width: 24px;
+	height: 14px;
+	transform: translateY(-50%);
 	display: flex;
 	align-items: center;
-	gap: 6px;
+	justify-content: flex-end;
+	cursor: pointer;
+	pointer-events: auto;
 }
 
-.preview-text {
-	font-size: 12px;
-	color: var(--text-p);
-	line-height: 1.5;
-	max-height: 80px;
+.ai-marker-dash {
+	width: 9px;
+	height: 6px;
+	background-color: var(--primary-blue);
+	transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+	border-radius: 2px;
+}
+
+.ai-scroll-marker-item:hover .ai-marker-dash {
+	width: 14px;
+	background-color: var(--primary-blue);
+	box-shadow: 0 0 8px rgba(14, 165, 233, 0.6);
+}
+
+.ai-chat-log {
+	flex: 1;
 	overflow-y: auto;
-	word-break: break-all;
-	font-family: monospace;
-}
-
-.ai-response-card {
-	border: 1px solid var(--border-color);
-	border-radius: 12px;
-	background-color: var(--bg-card);
-	overflow: hidden;
-	box-shadow: var(--shadow-sm);
-	transition: border-color 0.3s;
-}
-
-.ai-response-card.is-streaming {
-	border-color: var(--primary-blue);
-	box-shadow: 0 0 16px rgba(14, 165, 233, 0.2);
-}
-
-.response-card-header {
 	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	padding: 8px 14px;
-	background-color: var(--hover-sidebar);
-	border-bottom: 1px solid var(--border-color);
+	flex-direction: column;
+	gap: 28px;
+	padding: 10px 24px 20px 14px; 
+	scroll-behavior: smooth;
+	position: relative; 
 }
 
-.header-status {
-	display: flex;
-	align-items: center;
-	gap: 8px;
+.chat-empty-hint {
+	margin: auto;
+	text-align: center;
+	color: var(--text-muted);
 }
 
-.status-indicator {
-	width: 8px;
-	height: 8px;
-	border-radius: 50%;
-	background-color: #10b981;
-}
-
-.status-indicator.pulse-active {
-	background-color: #0ea5e9;
-	animation: pulseGlow 1.2s infinite;
-}
-
-@keyframes pulseGlow {
-	0% { box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.7); }
-	70% { box-shadow: 0 0 0 8px rgba(14, 165, 233, 0); }
-	100% { box-shadow: 0 0 0 0 rgba(14, 165, 233, 0); }
-}
-
-.status-text {
-	font-size: 12px;
-	font-weight: 600;
+.chat-empty-hint h3 {
+	margin: 0 0 8px 0;
 	color: var(--text-h1);
 }
 
-/* AI 复制回答下拉按钮样式（与代码块复制按钮一致） */
-.ai-code-copy-btn {
-	appearance: none !important;
-	-webkit-appearance: none !important;
-	-moz-appearance: none !important;
-	background: rgba(255, 255, 255, 0.08) !important;
-	border: 1px solid rgba(255, 255, 255, 0.15) !important;
-	color: #cbd5e1 !important;
-	border-radius: 6px !important;
-	padding: 4px 10px !important;
-	font-size: 11px !important;
-	line-height: 1.2 !important;
-	cursor: pointer !important;
-	outline: none !important;
-	display: inline-flex !important;
-	align-items: center !important;
-	gap: 5px !important;
-	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
-	box-shadow: none !important;
-	font-family: inherit !important;
-	margin: 0 !important;
-	vertical-align: middle !important;
+.chat-turn-pair {
+	display: flex;
+	flex-direction: column;
+	gap: 24px;
+	padding-bottom: 24px;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.ai-code-copy-btn:hover {
-	background: rgba(14, 165, 233, 0.25) !important;
-	color: #38bdf8 !important;
-	border-color: rgba(56, 189, 248, 0.5) !important;
-	transform: translateY(-1px) !important;
+.bp-wrapper:not(.is-dark) .chat-turn-pair {
+	border-bottom-color: rgba(0, 0, 0, 0.05);
 }
 
-.response-card-body {
-	min-height: 180px;
-	max-height: 320px;
+.chat-message {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+/* User & Model 名字标题栏 */
+.msg-meta {
+	font-size: 13px;
+	font-weight: 500;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--text-muted);
+}
+
+.msg-author {
+	color: var(--text-h1);
+	font-weight: 600;
+}
+
+.msg-time.is-pulsing {
+	color: var(--primary-blue);
+	animation: pulseText 1.5s infinite;
+}
+
+@keyframes pulseText {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.5; }
+}
+
+/* 消息正文内容 */
+.msg-content {
+	font-size: 14px;
+	color: var(--text-h1);
+	line-height: 1.6;
+	word-break: break-word;
+}
+
+.plain-text-query {
+	white-space: pre-wrap;
+	word-wrap: break-word;
+}
+
+/* 上下文包裹块 */
+.context-snippet {
+	background-color: var(--hover-sidebar);
+	border: 1px dashed var(--primary-blue);
+	border-radius: 8px;
+	padding: 8px 12px;
+	margin-bottom: 8px;
+	font-size: 12px;
+	color: var(--text-muted);
+	font-family: monospace;
+	max-height: 80px;
 	overflow-y: auto;
-	padding: 16px 20px;
-	position: relative;
+	word-break: break-all;
 }
 
+/* 图文同框图片缩略块 */
+.context-image-snippet {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	background-color: var(--hover-sidebar);
+	border-radius: 8px;
+	padding: 6px;
+	margin-bottom: 8px;
+	width: fit-content;
+}
+
+.context-image-snippet .snippet-thumb {
+	width: 48px;
+	height: 48px;
+	object-fit: cover;
+	border-radius: 4px;
+	border: 1px solid var(--border-color);
+}
+
+.context-image-snippet .snippet-name {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--primary-blue);
+	padding-right: 10px;
+}
+
+/* 仿截图 Thoughts 块 */
+.model-thoughts-mock {
+	background-color: #1a1a1c;
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	border-radius: 8px;
+	padding: 10px 14px;
+	font-size: 13px;
+	color: #9ca3af;
+	font-weight: 500;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 6px;
+}
+
+.bp-wrapper:not(.is-dark) .model-thoughts-mock {
+	background-color: #f1f5f9;
+	border-color: #e2e8f0;
+	color: #64748b;
+}
+
+.model-thoughts-mock i {
+	color: #3b82f6;
+}
+
+/* 气泡右侧图标按钮 */
+.copy-icon-btn {
+	cursor: pointer;
+	color: var(--text-muted);
+	font-size: 16px;
+	transition: color 0.2s, transform 0.2s;
+}
+
+.copy-icon-btn:hover {
+	color: var(--primary-blue);
+	transform: scale(1.1);
+}
+
+/* 流式加载光标 */
 .streaming-cursor {
 	display: inline-block;
 	color: var(--primary-blue);
@@ -4926,6 +5140,119 @@ export default {
 .ai-input-composer:focus-within {
 	border-color: var(--primary-blue);
 	box-shadow: 0 0 0 1px var(--primary-blue), 0 6px 20px rgba(14, 165, 233, 0.15);
+}
+
+/* 输入框上方的悬浮上下文提示 */
+.composer-context-preview {
+	background-color: var(--bg-app);
+	border: 1px dashed var(--primary-blue);
+	border-radius: 8px;
+	padding: 8px 12px;
+	margin-bottom: 8px;
+	position: relative;
+}
+
+.composer-context-preview .preview-label {
+	font-size: 12px;
+	font-weight: 700;
+	color: var(--primary-blue);
+	margin-bottom: 4px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.composer-context-preview .preview-text {
+	font-size: 12px;
+	color: var(--text-p);
+	line-height: 1.5;
+	max-height: 60px;
+	overflow-y: auto;
+	word-break: break-all;
+	font-family: monospace;
+}
+
+.close-context-btn {
+	position: absolute;
+	top: 8px;
+	right: 8px;
+	cursor: pointer;
+	color: var(--text-muted);
+	font-size: 14px;
+}
+
+.close-context-btn:hover {
+	color: #ef4444;
+}
+
+/* 输入框悬浮图片预览 */
+.composer-image-preview-wrapper {
+	display: flex;
+	align-items: flex-end;
+	gap: 12px;
+	padding-bottom: 10px;
+	margin-bottom: 6px;
+	border-bottom: 1px dashed var(--border-color);
+}
+
+.preview-thumb-box {
+	position: relative;
+	width: 64px;
+	height: 64px;
+	border-radius: 8px;
+	overflow: hidden;
+	border: 2px solid var(--primary-blue);
+	box-shadow: 0 4px 12px rgba(14, 165, 233, 0.2);
+	flex-shrink: 0;
+	background-color: var(--bg-card);
+}
+
+.preview-img-content {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.preview-remove-mask {
+	position: absolute;
+	top: 0; left: 0; right: 0; bottom: 0;
+	background: rgba(0, 0, 0, 0.6);
+	color: #ef4444;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0;
+	cursor: pointer;
+	transition: all 0.2s;
+	font-size: 20px;
+}
+
+.preview-thumb-box:hover .preview-remove-mask {
+	opacity: 1;
+}
+
+.preview-img-meta {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: 4px;
+}
+
+.preview-img-name {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--primary-blue);
+	max-width: 200px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.preview-img-status {
+	font-size: 11px;
+	color: #10b981;
+	font-weight: 500;
 }
 
 .composer-textarea-wrapper {
@@ -4970,7 +5297,7 @@ export default {
 	margin: 0 2px;
 }
 
-/* 仿截图 Tools 按钮样式 */
+/* Tools 按钮样式 */
 .pill-tool-btn {
 	display: inline-flex;
 	align-items: center;
@@ -4997,48 +5324,6 @@ export default {
 	border-color: var(--primary-blue);
 	color: var(--primary-blue);
 	background-color: var(--active-sidebar);
-}
-
-/* 完全对标截图 Grounding with Google Search ✕ 蓝光高亮胶囊标签 */
-.ai-active-pill-chip {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	background: rgba(14, 165, 233, 0.15);
-	border: 1px solid rgba(14, 165, 233, 0.4);
-	color: var(--primary-blue);
-	padding: 4px 12px;
-	border-radius: 20px;
-	font-size: 12px;
-	font-weight: 600;
-	user-select: none;
-	animation: pillPop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes pillPop {
-	0% { transform: scale(0.85); opacity: 0; }
-	100% { transform: scale(1); opacity: 1; }
-}
-
-.ai-active-pill-chip .chip-text {
-	max-width: 140px;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
-.ai-active-pill-chip .remove-chip-btn {
-	cursor: pointer;
-	font-size: 12px;
-	margin-left: 2px;
-	opacity: 0.75;
-	transition: opacity 0.2s, transform 0.2s;
-}
-
-.ai-active-pill-chip .remove-chip-btn:hover {
-	opacity: 1;
-	transform: scale(1.2);
-	color: #ef4444;
 }
 
 /* 快捷预设芯片胶囊 */
@@ -5085,7 +5370,7 @@ export default {
 	align-items: center;
 }
 
-/* 完全对标截图 Run Ctrl ↵ 样式的组合按键 */
+/* Run Ctrl ↵ 组合按键 */
 .run-send-btn {
 	appearance: none;
 	-webkit-appearance: none;
@@ -5155,165 +5440,6 @@ export default {
 .run-stop-btn:hover {
 	transform: translateY(-1px);
 	box-shadow: 0 6px 16px rgba(239, 68, 68, 0.5);
-}
-
-/* AI 历史记录视图 */
-.ai-history-view-container {
-	display: flex;
-	flex-direction: column;
-	gap: 12px;
-}
-
-.history-list-header {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	padding: 0 4px;
-}
-
-.history-count-title {
-	font-size: 13px;
-	font-weight: 700;
-	color: var(--text-h1);
-	display: flex;
-	align-items: center;
-	gap: 6px;
-}
-
-.danger-text-btn {
-	color: #ef4444 !important;
-	padding: 0 !important;
-	font-size: 12px !important;
-}
-
-.history-card-list {
-	max-height: 420px;
-	overflow-y: auto;
-	display: flex;
-	flex-direction: column;
-	gap: 12px;
-	padding-right: 4px;
-}
-
-.history-empty-hint {
-	text-align: center;
-	padding: 60px 0;
-	color: var(--text-muted);
-	font-size: 13px;
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
-}
-
-.history-empty-hint i {
-	font-size: 32px;
-	color: var(--border-color);
-}
-
-.history-item-card {
-	background-color: var(--bg-card);
-	border: 1px solid var(--border-color);
-	border-radius: 10px;
-	padding: 12px 16px;
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
-	transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.history-item-card:hover {
-	border-color: var(--primary-blue);
-	box-shadow: var(--shadow-sm);
-}
-
-.history-item-card.is-active-history {
-	border-color: var(--primary-blue);
-	background-color: var(--active-sidebar);
-}
-
-.history-item-top {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-}
-
-.history-title-group {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-}
-
-.history-index-tag {
-	font-size: 11px;
-	font-weight: 800;
-	background-color: var(--hover-sidebar);
-	color: var(--primary-blue);
-	padding: 1px 6px;
-	border-radius: 4px;
-	font-family: monospace;
-}
-
-.history-time {
-	font-size: 11px;
-	color: var(--text-muted);
-}
-
-.history-actions-group {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-}
-
-.history-query-snippet {
-	font-size: 13px;
-	color: var(--text-h1);
-	line-height: 1.4;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
-.history-image-tag {
-	font-size: 11px;
-	color: var(--primary-blue);
-	background-color: var(--hover-sidebar);
-	padding: 1px 5px;
-	border-radius: 4px;
-	margin-left: 6px;
-}
-
-.history-response-snippet {
-	font-size: 12px;
-	color: var(--text-muted);
-	line-height: 1.4;
-	display: -webkit-box;
-	-webkit-line-clamp: 2;
-	-webkit-box-orient: vertical;
-	overflow: hidden;
-}
-
-.ai-placeholder-text {
-	text-align: center;
-	padding: 40px 0;
-	font-size: 13px;
-	color: var(--text-muted);
-}
-
-.warning-text {
-	color: #f59e0b;
-	font-weight: 600;
-}
-
-.ai-dialog-footer {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-}
-
-.streaming-tip {
-	font-size: 12px;
-	color: var(--primary-blue);
-	font-weight: 600;
 }
 
 /* ================= 富文本编辑器特定样式 ================= */
@@ -7498,12 +7624,9 @@ button.code-copy-btn.copied,
 }
 </style>
 
-<!-- =========================================================================
-     全局 Element UI 浮动组件 (Popover / Select / Dropdown / ContextMenu / MessageBox) 终极双主题修复
-     (非 scoped 样式，强力重置挂载在 document.body 节点下的所有弹出层)
-     ========================================================================= -->
+<!-- 全局覆盖：Element UI Popper 深浅双主题修复 -->
 <style>
-/* ---------------- 1. 暗黑模式 Poppers (el-popover, el-dropdown-menu, el-select-dropdown) ---------------- */
+/* ---------------- 1. 暗黑模式 Poppers ---------------- */
 .custom-dark-popover,
 .custom-dark-select,
 .custom-dark-popover.el-dropdown-menu,
@@ -7520,30 +7643,17 @@ button.code-copy-btn.copied,
 	border-radius: 10px !important;
 }
 
-/* 气泡指示小箭头颜色完美融合 */
 .custom-dark-popover .popper__arrow,
 .custom-dark-popover .popper__arrow::after,
 .custom-dark-select .popper__arrow,
-.custom-dark-select .popper__arrow::after,
-.el-dropdown-menu.custom-dark-popover .popper__arrow,
-.el-dropdown-menu.custom-dark-popover .popper__arrow::after {
+.custom-dark-select .popper__arrow::after {
 	border-bottom-color: #18181b !important;
 	border-top-color: #18181b !important;
 	border-left-color: #18181b !important;
 	border-right-color: #18181b !important;
 }
 
-.custom-dark-popover.el-popper[x-placement^=bottom] .popper__arrow,
-.custom-dark-popover.el-popper[x-placement^=bottom] .popper__arrow::after {
-	border-bottom-color: #18181b !important;
-}
-
-.custom-dark-popover.el-popper[x-placement^=top] .popper__arrow,
-.custom-dark-popover.el-popper[x-placement^=top] .popper__arrow::after {
-	border-top-color: #18181b !important;
-}
-
-/* Select 下拉选择框列表项 (el-select) */
+/* Select 下拉选择框列表项 */
 .custom-dark-select .el-select-dropdown__item {
 	color: #cbd5e1 !important;
 	background-color: transparent !important;
@@ -7682,7 +7792,6 @@ button.code-copy-btn.copied,
 	background-color: #e2e8f0;
 }
 
-/* 暗黑气泡内部文本/标题通用颜色接管 */
 .custom-dark-popover .shared-users-popover-content .popover-sub-title,
 .custom-dark-popover .marker-popover-content .marker-popover-title,
 .custom-dark-popover .editors-popover-content .editors-title {
@@ -7693,7 +7802,6 @@ button.code-copy-btn.copied,
 	color: #94a3b8 !important;
 }
 
-/* ---------------- 4. 系统退出确认 MessageBox 弹窗 ---------------- */
 .custom-logout-confirm {
 	background-color: #18181b !important;
 	border: 1px solid #27272a !important;
