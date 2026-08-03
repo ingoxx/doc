@@ -7,7 +7,10 @@
 		<!-- 全局隐藏的文档导入 Input -->
 		<input type="file" ref="importFileInput" accept=".md,.txt,.log" style="display: none" @change="handleImportFileSelect" />
 		<!-- 全局 AI 图片上传 Input -->
-		<input type="file" ref="aiImageFileInput" accept="image/*" style="display: none" @change="handleAiImageSelect" />
+		<!-- <input type="file" ref="aiImageFileInput" accept="image/*" style="display: none" @change="handleAiImageSelect" /> -->
+
+		<!-- 全局 AI 文件上传 Input (支持图片与常用文档) -->
+		<input type="file" ref="aiFileInput" accept="image/*,.txt,.md,.log,.doc,.docx,.xls,.xlsx,.csv" style="display: none" @change="handleAiFileSelect" />
 
 		<!-- ================= 划选文字 浮动「问 AI」微按钮 ================= -->
 		<transition name="el-fade-in-linear">
@@ -80,7 +83,7 @@
 					</div>
 					<div slot="reference" class="avatar-wrapper">
 						<el-avatar class="user-avatar" size="small"
-							src="https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png">
+							:src="require('../../../public/doc2.png')">
 						</el-avatar>
 						<span class="login_user">{{ currentUser.username }}</span>	
 					</div>
@@ -522,7 +525,7 @@
 													</div>
 
 													<!-- SVN 拉取与提交同步按钮 -->
-													<el-popover placement="bottom" width="240" trigger="click" :visible-arrow="false" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
+													<!-- <el-popover placement="bottom" width="240" trigger="click" :visible-arrow="false" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 														<div class="action-menu-list">
 															<div class="action-item" @click="handleSvnCommand('pull', prob)">
 																<i class="el-icon-download"></i> <span>拉取最新版本 (SVN Pull)</span>
@@ -534,7 +537,7 @@
 														<div slot="reference" class="action-btn svn-action-btn" @click.stop>
 															<i class="el-icon-refresh"></i> <span>SVN同步</span> <i class="el-icon-arrow-down el-icon--right"></i>
 														</div>
-													</el-popover>
+													</el-popover> -->
 
 													<div class="copy-btn action-btn" v-if="!prob.attachments || prob.attachments.length < 10"
 														@click.stop="triggerUpload(prob.id)">
@@ -669,186 +672,125 @@
 			</transition>
 
 			<!-- 统一的无限流式原生对话视图 (增加 position: relative 供内部轨道定位) -->
+			<!-- 统一的无限流式原生对话视图 -->
 			<div class="ai-chat-view-container" style="position: relative;">
 
-				<!-- ================= 新增：右侧 AI 对话流锚点指示器轨道 ================= -->
 				<transition name="el-fade-in-linear">
 					<div class="ai-chat-scrollbar-track" v-if="aiScrollMarkers.length > 0">
-						<el-popover
-							v-for="marker in aiScrollMarkers"
-							:key="'ai-marker-' + marker.id"
-							placement="left"
-							trigger="hover"
-							width="220"
-							:popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'"
-						>
+						<el-popover v-for="marker in aiScrollMarkers" :key="'ai-marker-' + marker.id" placement="left" trigger="hover" width="220" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 							<div class="marker-popover-content">
-								<div class="marker-popover-title">
-									<i class="el-icon-chat-dot-square"></i>
-									<span>{{ marker.text }}</span>
-								</div>
-								<div class="marker-popover-tip" style="margin-top: 6px;">
-									<i class="el-icon-position"></i> 点击直达此条问答
-								</div>
+								<div class="marker-popover-title"><i class="el-icon-chat-dot-square"></i><span>{{ marker.text }}</span></div>
+								<div class="marker-popover-tip" style="margin-top: 6px;"><i class="el-icon-position"></i> 点击直达此条问答</div>
 							</div>
-							<div
-								slot="reference"
-								class="ai-scroll-marker-item"
-								:style="{ top: marker.percent + '%' }"
-								@click.stop="scrollToAiTurn(marker.id)"
-							>
+							<div slot="reference" class="ai-scroll-marker-item" :style="{ top: marker.percent + '%' }" @click.stop="scrollToAiTurn(marker.id)">
 								<span class="ai-marker-dash"></span>
 							</div>
 						</el-popover>
 					</div>
 				</transition>
 				
-				<!-- 滚动聊天区 -->
 				<div class="ai-chat-log" ref="aiResponseScrollContainer">
 					
 					<div class="chat-empty-hint" v-if="aiHistory.length === 0 && !aiDialog.responseText && !aiDialog.isStreaming">
 						<div class="ai-glow-icon large"><i class="el-icon-cpu"></i></div>
 						<h3>AI 助手已就绪</h3>
-						<p>支持多模态理解，请在下方输入报错信息、代码或截图，即可开始智能分析。</p>
+						<p>支持多模态理解，请在下方输入报错信息，或上传截图、日志、Word、Excel 文档即可开始智能分析。</p>
 					</div>
 
-					<!-- 1. 渲染：所有历史对话记录 (绑定 id 供锚点滚动使用) -->
+					<!-- 1. 渲染：所有历史对话记录 -->
 					<div class="chat-turn-pair" v-for="(item, idx) in aiHistory" :key="'hist-' + (item.id || idx)" :id="'chat-turn-' + (item.id || idx)">
-						<!-- 历史：User 气泡 -->
 						<div class="chat-message user-message">
 							<div class="msg-meta">
-								<span class="msg-author">User</span> 
-								<span class="msg-time">• {{ item.timestamp }}</span>
+								<span class="msg-author">User</span> <span class="msg-time">• {{ item.timestamp }}</span>
 							</div>
 							<div class="msg-content">
+								<!-- 适配：历史记录中的图片或文档 -->
 								<div v-if="item.image" class="context-image-snippet">
-									<img :src="item.image.url || item.image.preview || ''" class="snippet-thumb" />
-									<span class="snippet-name"><i class="el-icon-picture"></i> {{ item.image.name }}</span>
+									<img v-if="item.image.isImage !== false" :src="item.image.url || item.image.preview || ''" class="snippet-thumb" />
+									<div v-else class="preview-file-icon snippet-thumb">
+										<i :class="item.image.iconClass || 'el-icon-document'"></i>
+									</div>
+									<span class="snippet-name"><i :class="item.image.isImage !== false ? 'el-icon-picture' : 'el-icon-document'"></i> {{ item.image.name }}</span>
 								</div>
 								<div class="plain-text-query">{{ item.queryText }}</div>
 							</div>
 						</div>
 						
-						<!-- 历史：Model 气泡 -->
 						<div class="chat-message model-message">
 							<div class="msg-meta">
-								<span class="msg-author">Model</span> 
-								<span class="msg-time">• {{ item.timestamp }}</span>
-								<!-- 复制按钮 -->
+								<span class="msg-author">Model</span> <span class="msg-time">• {{ item.timestamp }}</span>
 								<el-popover placement="bottom-end" width="160" trigger="click" :visible-arrow="false" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 									<div class="action-menu-list">
-										<div class="action-item" @click="handleAiCopyCommand('raw', parseThinkAndAnswer(item.responseText).answer)">
-											<i class="el-icon-document-copy"></i> <span>复制 MD 格式</span>
-										</div>
-										<div class="action-item" @click="handleAiCopyCommand('plain', parseThinkAndAnswer(item.responseText).answer)">
-											<i class="el-icon-tickets"></i> <span>复制纯文本格式</span>
-										</div>
+										<div class="action-item" @click="handleAiCopyCommand('raw', parseThinkAndAnswer(item.responseText).answer)"><i class="el-icon-document-copy"></i> <span>复制 MD 格式</span></div>
+										<div class="action-item" @click="handleAiCopyCommand('plain', parseThinkAndAnswer(item.responseText).answer)"><i class="el-icon-tickets"></i> <span>复制纯文本格式</span></div>
 									</div>
 									<i slot="reference" class="el-icon-document-copy copy-icon-btn" title="点击复制回答"></i>
 								</el-popover>
 								<i class="el-icon-delete copy-icon-btn" style="color: #ef4444; opacity: 0.6; margin-left: 10px;" @click="deleteSingleHistory(item.id)" title="删除此记录"></i>
 							</div>
 							
-							<!-- AI 思考过程折叠块 (<think> 标签解析) -->
 							<div v-if="parseThinkAndAnswer(item.responseText).think" style="margin-bottom: 12px;">
-								<div class="model-thoughts-mock" 
-									 style="cursor: pointer; justify-content: space-between;" 
-									 @click="$set(item, 'showThought', item.showThought === undefined ? false : !item.showThought)">
-									<div style="display: flex; align-items: center; gap: 8px;">
-										<i class="el-icon-magic-stick"></i> AI 深度排错思考过程
-									</div>
+								<div class="model-thoughts-mock" style="cursor: pointer; justify-content: space-between;" @click="$set(item, 'showThought', item.showThought === undefined ? false : !item.showThought)">
+									<div style="display: flex; align-items: center; gap: 8px;"><i class="el-icon-magic-stick"></i> AI 深度排错思考过程</div>
 									<i :class="item.showThought === false ? 'el-icon-arrow-down' : 'el-icon-arrow-up'"></i>
 								</div>
-								
 								<transition name="el-zoom-in-top">
-									<div v-show="item.showThought !== false" 
-										 class="msg-content markdown-body" 
-										 style="padding: 10px 14px; background: rgba(14, 165, 233, 0.05); border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; color: var(--text-muted);" 
-										 v-html="renderMarkdown(parseThinkAndAnswer(item.responseText).think)">
-									</div>
+									<div v-show="item.showThought !== false" class="msg-content markdown-body" style="padding: 10px 14px; background: rgba(14, 165, 233, 0.05); border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; color: var(--text-muted);" v-html="renderMarkdown(parseThinkAndAnswer(item.responseText).think)"></div>
 								</transition>
 							</div>
-							
 							<div class="msg-content markdown-body" v-html="renderMarkdown(parseThinkAndAnswer(item.responseText).answer)"></div>
 						</div>
 					</div>
 
-					<!-- 2. 渲染：当前正在生成或刚刚生成的会话 (也加上特殊 id) -->
+					<!-- 2. 渲染：当前正在生成的会话 -->
 					<div class="chat-turn-pair" id="chat-turn-current" v-if="aiDialog.isStreaming || aiDialog.responseText">
-						
-						<!-- 当前：User 气泡 -->
 						<div class="chat-message user-message">
-							<div class="msg-meta">
-								<span class="msg-author">User</span> 
-								<span class="msg-time">• 刚刚</span>
-							</div>
+							<div class="msg-meta"><span class="msg-author">User</span> <span class="msg-time">• 刚刚</span></div>
 							<div class="msg-content">
-								<!-- 图文同框：如果有图片附件 -->
-								<div v-if="aiDialog.currentImage" class="context-image-snippet">
-									<img :src="aiDialog.currentImage.url || aiDialog.currentImage.preview || ''" class="snippet-thumb" />
-									<span class="snippet-name"><i class="el-icon-picture"></i> {{ aiDialog.currentImage.name }}</span>
+								<!-- 适配：当前发送中的图片或文档 -->
+								<div v-if="aiDialog.currentFile" class="context-image-snippet">
+									<img v-if="aiDialog.currentFile.isImage" :src="aiDialog.currentFile.url || ''" class="snippet-thumb" />
+									<div v-else class="preview-file-icon snippet-thumb">
+										<i :class="aiDialog.currentFile.iconClass || 'el-icon-document'"></i>
+									</div>
+									<span class="snippet-name"><i :class="aiDialog.currentFile.isImage ? 'el-icon-picture' : 'el-icon-document'"></i> {{ aiDialog.currentFile.name }}</span>
 								</div>
-								<!-- 用户的问题文本 -->
 								<div class="plain-text-query">{{ aiDialog.currentQuery || aiDialog.currentContext || '...' }}</div>
 							</div>
 						</div>
 						
-						<!-- 当前：Model 气泡 -->
 						<div class="chat-message model-message">
 							<div class="msg-meta">
 								<span class="msg-author">Model</span> 
-								<span class="msg-time" :class="{ 'is-pulsing': aiDialog.isStreaming }">
-									• {{ aiDialog.isStreaming ? '正在思考生成中...' : '刚刚' }}
-								</span>
-								
-								<!-- 当前气泡的复制按钮 -->
+								<span class="msg-time" :class="{ 'is-pulsing': aiDialog.isStreaming }">• {{ aiDialog.isStreaming ? '正在思考生成中...' : '刚刚' }}</span>
 								<el-popover v-if="!aiDialog.isStreaming && parseThinkAndAnswer(aiDialog.responseText).answer" placement="bottom-end" width="160" trigger="click" :visible-arrow="false" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 									<div class="action-menu-list">
-										<div class="action-item" @click="handleAiCopyCommand('raw', parseThinkAndAnswer(aiDialog.responseText).answer)">
-											<i class="el-icon-document-copy"></i> <span>复制 MD 格式</span>
-										</div>
-										<div class="action-item" @click="handleAiCopyCommand('plain', parseThinkAndAnswer(aiDialog.responseText).answer)">
-											<i class="el-icon-tickets"></i> <span>复制纯文本格式</span>
-										</div>
+										<div class="action-item" @click="handleAiCopyCommand('raw', parseThinkAndAnswer(aiDialog.responseText).answer)"><i class="el-icon-document-copy"></i> <span>复制 MD 格式</span></div>
+										<div class="action-item" @click="handleAiCopyCommand('plain', parseThinkAndAnswer(aiDialog.responseText).answer)"><i class="el-icon-tickets"></i> <span>复制纯文本格式</span></div>
 									</div>
 									<i slot="reference" class="el-icon-document-copy copy-icon-btn" title="点击复制回答"></i>
 								</el-popover>
 							</div>
 							
-							<!-- 当前生成时的 Thoughts 解析 -->
 							<div v-if="parseThinkAndAnswer(aiDialog.responseText).think || aiDialog.isStreaming" style="margin-bottom: 12px;">
-								<div class="model-thoughts-mock" 
-									 style="cursor: pointer; justify-content: space-between;" 
-									 @click="$set(aiDialog, 'showThought', aiDialog.showThought === undefined ? false : !aiDialog.showThought)">
-									<div style="display: flex; align-items: center; gap: 8px;">
-										<i :class="aiDialog.isStreaming && !parseThinkAndAnswer(aiDialog.responseText).answer ? 'el-icon-loading' : 'el-icon-magic-stick'"></i> 
-										{{ aiDialog.isStreaming && !parseThinkAndAnswer(aiDialog.responseText).answer ? 'Thinking process active...' : 'AI 深度排错思考过程' }}
-									</div>
+								<div class="model-thoughts-mock" style="cursor: pointer; justify-content: space-between;" @click="$set(aiDialog, 'showThought', aiDialog.showThought === undefined ? false : !aiDialog.showThought)">
+									<div style="display: flex; align-items: center; gap: 8px;"><i :class="aiDialog.isStreaming && !parseThinkAndAnswer(aiDialog.responseText).answer ? 'el-icon-loading' : 'el-icon-magic-stick'"></i> {{ aiDialog.isStreaming && !parseThinkAndAnswer(aiDialog.responseText).answer ? 'Thinking process active...' : 'AI 深度排错思考过程' }}</div>
 									<i :class="aiDialog.showThought === false ? 'el-icon-arrow-down' : 'el-icon-arrow-up'"></i>
 								</div>
-								
 								<transition name="el-zoom-in-top">
-									<div v-show="aiDialog.showThought !== false && parseThinkAndAnswer(aiDialog.responseText).think" 
-										 class="msg-content markdown-body" 
-										 style="padding: 10px 14px; background: rgba(14, 165, 233, 0.05); border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; color: var(--text-muted);" 
-										 v-html="renderMarkdown(parseThinkAndAnswer(aiDialog.responseText).think)">
-									</div>
+									<div v-show="aiDialog.showThought !== false && parseThinkAndAnswer(aiDialog.responseText).think" class="msg-content markdown-body" style="padding: 10px 14px; background: rgba(14, 165, 233, 0.05); border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; color: var(--text-muted);" v-html="renderMarkdown(parseThinkAndAnswer(aiDialog.responseText).think)"></div>
 								</transition>
 							</div>
-							
-							<!-- 当前回答正文 -->
 							<div class="msg-content markdown-body">
 								<div v-if="parseThinkAndAnswer(aiDialog.responseText).answer" v-html="renderMarkdown(parseThinkAndAnswer(aiDialog.responseText).answer)"></div>
 								<span v-if="aiDialog.isStreaming && parseThinkAndAnswer(aiDialog.responseText).answer" class="streaming-cursor">▌</span>
 							</div>
 						</div>
 					</div>
-
 				</div>
 
-				<!-- 底部交互式输入追问框 & 工具栏 -->
+				<!-- 底部交互式输入框 -->
 				<div class="ai-input-composer">
-					<!-- 当存在划选文本，且还没发出去时，悬浮在输入框上面作为提示 -->
 					<transition name="el-zoom-in-bottom">
 						<div v-if="aiDialog.queryText && !aiDialog.isStreaming && !aiDialog.responseText" class="composer-context-preview">
 							<div class="preview-label"><i class="el-icon-document-checked"></i> 当前划选上下文：</div>
@@ -857,74 +799,57 @@
 						</div>
 					</transition>
 
-					<!-- 本地图片选中时的悬浮预览 -->
+					<!-- 本地图片/文档悬浮预览 -->
 					<transition name="el-zoom-in-bottom">
-						<div v-if="aiSelectedImage" class="composer-image-preview-wrapper">
-							<div class="preview-thumb-box" :title="aiSelectedImage.name">
-								<img :src="aiSelectedImage.url || aiSelectedImage.preview || ''" class="preview-img-content" />
-								<div class="preview-remove-mask" @click.stop="removeSelectedAiImage" title="点击移除图片">
+						<div v-if="aiSelectedFile" class="composer-image-preview-wrapper">
+							<div class="preview-thumb-box" :title="aiSelectedFile.name">
+								<img v-if="aiSelectedFile.isImage" :src="aiSelectedFile.url || ''" class="preview-img-content" />
+								<div v-else class="preview-file-icon">
+									<i :class="aiSelectedFile.iconClass"></i>
+								</div>
+								<div class="preview-remove-mask" @click.stop="removeSelectedAiFile" title="点击移除文件">
 									<i class="el-icon-delete"></i>
 								</div>
 							</div>
 							<div class="preview-img-meta">
-								<span class="preview-img-name"><i class="el-icon-picture"></i> {{ aiSelectedImage.name }}</span>
+								<span class="preview-img-name"><i :class="aiSelectedFile.isImage ? 'el-icon-picture' : 'el-icon-document'"></i> {{ aiSelectedFile.name }}</span>
 								<span class="preview-img-status">已准备好发送给 AI 解析</span>
 							</div>
 						</div>
 					</transition>
 
 					<div class="composer-textarea-wrapper">
-						<el-input 
-							type="textarea" 
-							:autosize="{ minRows: 2, maxRows: 5 }" 
-							v-model="aiInputQuery" 
-							placeholder="输入提问、报错提示或粘贴代码..." 
-							class="modern-el-input composer-textarea"
-							@keyup.enter.native="handleComposerEnter"
-						></el-input>
+						<el-input type="textarea" :autosize="{ minRows: 2, maxRows: 5 }" v-model="aiInputQuery" placeholder="输入提问、报错提示或粘贴代码..." class="modern-el-input composer-textarea" @keyup.enter.native="handleComposerEnter"></el-input>
 					</div>
 
 					<div class="composer-single-bar">
 						<div class="bar-left-tools">
-							<el-tooltip :content="aiSelectedImage ? '更换分析图片' : '上传图片/截图分析'" placement="top">
-								<div class="pill-tool-btn" :class="{ 'has-file': !!aiSelectedImage }" @click="triggerAiImageUpload">
-									<i class="el-icon-picture-outline"></i>
-									<span>{{ aiSelectedImage ? '更换图片' : '上传图片' }}</span>
+							<el-tooltip :content="aiSelectedFile ? '更换分析文件' : '上传图片/文档分析'" placement="top">
+								<div class="pill-tool-btn" :class="{ 'has-file': !!aiSelectedFile }" @click="triggerAiFileUpload">
+									<i class="el-icon-folder-opened"></i>
+									<span>{{ aiSelectedFile ? '更换文件' : '上传文件' }}</span>
 								</div>
 							</el-tooltip>
 
-							<div class="tool-divider" v-if="!aiSelectedImage"></div>
+							<div class="tool-divider" v-if="!aiSelectedFile"></div>
 
-							<div class="preset-icon-group" v-if="!aiSelectedImage">
+							<div class="preset-icon-group" v-if="!aiSelectedFile">
 								<span class="preset-pill-chip" @click="applyPromptPreset('详细排错分析')">🎯 详细排错</span>
 								<span class="preset-pill-chip" @click="applyPromptPreset('代码优化与修复')">💡 代码优化</span>
 								<span class="preset-pill-chip" @click="applyPromptPreset('简明原因总结')">📝 简明总结</span>
 								<span class="preset-pill-chip" @click="applyPromptPreset('英文日志翻译')">🌐 日志翻译</span>
 							</div>
-
 							<el-tooltip v-if="aiInputQuery" content="清空输入内容" placement="top">
 								<i class="el-icon-delete clear-input-icon" @click="aiInputQuery = ''"></i>
 							</el-tooltip>
 						</div>
 
 						<div class="bar-right-actions">
-							<button 
-								v-if="!aiDialog.isStreaming"
-								type="button"
-								class="run-send-btn" 
-								:disabled="!canSendAiQuery"
-								@click="sendAiQueryStream(false)">
-								<span>发送</span>
-								<span class="kbd-shortcut">Enter ↵</span>
+							<button v-if="!aiDialog.isStreaming" type="button" class="run-send-btn" :disabled="!canSendAiQuery" @click="sendAiQueryStream(false)">
+								<span>发送</span><span class="kbd-shortcut">Enter ↵</span>
 							</button>
-
-							<button 
-								v-else
-								type="button"
-								class="run-stop-btn" 
-								@click="abortAiStream">
-								<i class="el-icon-video-pause"></i>
-								<span>停止生成</span>
+							<button v-else type="button" class="run-stop-btn" @click="abortAiStream">
+								<i class="el-icon-video-pause"></i><span>停止生成</span>
 							</button>
 						</div>
 					</div>
@@ -1584,11 +1509,11 @@ export default {
 				responseText: '', 
 				currentQuery: '', 
 				currentContext: '', 
-				currentImage: null,
+				currentFile: null,
 				showThought: true 
 			},
 			aiInputQuery: '', 
-			aiSelectedImage: null, 
+			aiSelectedFile: null, 
 			aiHistory: Array.isArray(initialAiHistory) ? initialAiHistory : [],
 			aiAbortController: null,
 			
@@ -1663,8 +1588,8 @@ export default {
 		// 计算 AI 提问是否具备发送条件
 		canSendAiQuery() {
 			const hasText = !!(this.aiInputQuery && this.aiInputQuery.trim().length > 0);
-			const hasImg = !!this.aiSelectedImage;
-			return hasText || hasImg;
+			const hasFile = !!this.aiSelectedFile;
+			return hasText || hasFile;
 		},
 
 		dialogWidth() {
@@ -2151,7 +2076,7 @@ export default {
 				this.aiAbortController = null;
 			}
 			this.aiDialog.isStreaming = false;
-			this.showToast('已终止 AI 生成');
+			// this.showToast('已终止 AI 生成');
 		},
 
 		handleAiDialogClose() {
@@ -2171,6 +2096,83 @@ export default {
 		/**
 		 * 核心：Gemini API SSE 流式输出推流与多模态多轮对话
 		 */
+		// ======== AI 混合文件（图片/文档）上传与多模态解析 ========
+		triggerAiFileUpload() {
+			this.$refs.aiFileInput.click();
+		},
+
+		handleAiFileSelect(event) {
+			const file = event.target.files[0];
+			if (!file) return;
+
+			const isImage = file.type.startsWith('image/');
+			let iconClass = 'el-icon-document';
+			
+			if (!isImage) {
+				const ext = file.name.split('.').pop().toLowerCase();
+				if (['xls', 'xlsx', 'csv'].includes(ext)) iconClass = 'el-icon-s-data';
+				else if (['doc', 'docx'].includes(ext)) iconClass = 'el-icon-document-copy';
+				else iconClass = 'el-icon-tickets';
+			}
+
+			this.aiSelectedFile = {
+				file: file,
+				name: file.name,
+				isImage: isImage,
+				iconClass: iconClass,
+				url: isImage ? URL.createObjectURL(file) : null
+			};
+
+			this.$refs.aiFileInput.value = '';
+		},
+
+		removeSelectedAiFile() {
+			this.aiSelectedFile = null;
+			if (this.$refs.aiFileInput) {
+				this.$refs.aiFileInput.value = '';
+			}
+		},
+
+		// 新增：前端纯文本提取引擎（提取 Word / Excel / Txt 给 AI 作为语料）
+		async extractTextFromFile(file) {
+			const ext = file.name.split('.').pop().toLowerCase();
+			
+			if (['txt', 'md', 'json', 'log', 'csv'].includes(ext)) {
+				return new Promise((resolve, reject) => {
+					const reader = new FileReader();
+					reader.onload = (e) => resolve(e.target.result);
+					reader.onerror = (e) => reject(e);
+					reader.readAsText(file); // 默认 UTF-8
+				});
+			}
+			
+			if (['xls', 'xlsx'].includes(ext)) {
+				await this.loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
+				const arrayBuffer = await file.arrayBuffer();
+				const wb = window.XLSX.read(arrayBuffer, { type: 'array' });
+				let result = '';
+				wb.SheetNames.forEach(sheetName => {
+					const ws = wb.Sheets[sheetName];
+					const csv = window.XLSX.utils.sheet_to_csv(ws);
+					if (csv) result += `\n--- 表格 Sheet: ${sheetName} ---\n${csv}`;
+				});
+				return result.trim() || '表格内容为空';
+			}
+
+			if (['doc', 'docx'].includes(ext)) {
+				if (ext === 'doc') return '提示：由于 .doc 属于旧版二进制加密格式，前端纯文本提取受限，建议在本地转换为 .docx 后重新上传。';
+				await this.loadScript('https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js');
+				const arrayBuffer = await file.arrayBuffer();
+				const result = await window.mammoth.extractRawText({ arrayBuffer });
+				return result.value || 'Word 文档内容为空';
+			}
+			
+			return '提示：暂不支持该类型文档的前端纯文本提取。';
+		},
+
+		/**
+		 * 核心：Gemini API SSE 流式输出推流与多模态多轮对话
+		 */
 		async sendAiQueryStream() {
 			if (!this.aiForm.apiKey) {
 				this.$message.warning("请先在右上角配置 Gemini API Key");
@@ -2178,61 +2180,68 @@ export default {
 				return;
 			}
 
-			// 状态转移：将底部的输入框内容“快照”到当前的生成流对象中
 			this.aiDialog.currentQuery = this.aiInputQuery;
 			this.aiDialog.currentContext = this.aiDialog.queryText;
-			this.aiDialog.currentImage = this.aiSelectedImage;
+			this.aiDialog.currentFile = this.aiSelectedFile;
 
-			// 清空底部输入区，方便用户继续输入下一句
 			this.aiInputQuery = "";
 			this.aiDialog.queryText = "";
-			this.aiSelectedImage = null;
+			this.aiSelectedFile = null;
 
-			// ==============================================================
-			// 【修复多轮记忆】：构建包含所有历史上下文的 API contents 数组
-			// ==============================================================
 			const apiContents = [];
 
-			// 1. 将历史记录严格按照 user / model 轮次推入
 			for (let i = 0; i < this.aiHistory.length; i++) {
 				const item = this.aiHistory[i];
-				// 提取包含隐藏上下文的 API 专属提问文本
 				let userText = item.apiQueryText || item.queryText || ' ';
 				
-				// 如果是整个对话的历史第一条，且有预设，确保预设只出现在第一句话
 				if (i === 0 && this.aiForm.customPrompt) {
 					if (!userText.includes("【系统预设指令】")) {
 						userText = `【系统预设指令】\n${this.aiForm.customPrompt}\n\n${userText}`;
 					}
 				}
-
 				apiContents.push({ role: 'user', parts: [{ text: userText }] });
 				apiContents.push({ role: 'model', parts: [{ text: item.responseText || ' ' }] });
 			}
 
-			// 2. 组装当前最新一次提问的 API 专用文本 (携带完整的划选上下文)
 			let currentApiText = "";
+			
+			// 【新增】：如果是文档，提前解析文字并悄悄塞入大模型的 Prompt 上下文中
+			if (this.aiDialog.currentFile && !this.aiDialog.currentFile.isImage) {
+				this.aiDialog.isStreaming = true; 
+				this.aiDialog.responseText = "正在通过前端引擎解析提取文档纯文本，请稍候...\n";
+				try {
+					const docText = await this.extractTextFromFile(this.aiDialog.currentFile.file);
+					currentApiText += `【用户上传附带的文档 (${this.aiDialog.currentFile.name}) 的纯文本提取内容】:\n${docText}\n\n`;
+				} catch (e) {
+					this.$message.error("文档纯文本提取失败");
+					this.aiDialog.isStreaming = false;
+					this.aiDialog.responseText = "";
+					return;
+				}
+				this.aiDialog.responseText = ""; 
+			}
+
 			if (this.aiDialog.currentContext) {
 				currentApiText += "【附带的报错或代码上下文】:\n" + this.aiDialog.currentContext + "\n\n";
 			}
 			currentApiText += "【用户的最新提问】:\n" + (this.aiDialog.currentQuery || "请基于上下文继续分析解答");
 
-			// 这个变量专门发给接口（如果是空历史记录的第一句话，注入 prompt）
 			let finalCurrentApiText = currentApiText;
 			if (this.aiHistory.length === 0 && this.aiForm.customPrompt) {
 				finalCurrentApiText = `【系统预设指令】\n${this.aiForm.customPrompt}\n\n${currentApiText}`;
 			}
 
 			const currentParts = [{ text: finalCurrentApiText }];
-
-			// 如果当前上传了图片，转 Base64 后插入到请求体 parts 中
-			if (this.aiDialog.currentImage && this.aiDialog.currentImage.file) {
+			let base64String = null;
+			
+			// 【修改】：只有图片文件，才进行 Base64 转换并走 inline_data 多模态视觉 API
+			if (this.aiDialog.currentFile && this.aiDialog.currentFile.isImage) {
 				try {
-					const base64String = await this.fileToBase64(this.aiDialog.currentImage.file);
+					base64String = await this.fileToBase64(this.aiDialog.currentFile.file);
 					const pureBase64Data = base64String.split(',')[1];
 					currentParts.push({
 						inline_data: {
-							mime_type: this.aiDialog.currentImage.file.type || 'image/jpeg',
+							mime_type: this.aiDialog.currentFile.file.type || 'image/jpeg',
 							data: pureBase64Data
 						}
 					});
@@ -2242,7 +2251,6 @@ export default {
 				}
 			}
 
-			// 3. 将当前最新提问推入 contents 数组的末尾
 			apiContents.push({ role: 'user', parts: currentParts });
 
 			const modelName = this.aiForm.model || 'gemini-1.5-pro';
@@ -2252,10 +2260,7 @@ export default {
 			this.aiDialog.isStreaming = true;
 			this.aiDialog.responseText = "";
 
-			// 初始化中断控制器 (修复停止生成按钮无效的问题)
 			this.aiAbortController = new AbortController();
-
-			// 立即滚动到底部，展示 User 的气泡
 			this.scrollAiContentToBottom();
 
 			try {
@@ -2263,7 +2268,7 @@ export default {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify(payload),
-					signal: this.aiAbortController.signal // 挂载终止信号
+					signal: this.aiAbortController.signal 
 				});
 
 				if (!response.ok) {
@@ -2292,8 +2297,6 @@ export default {
 						const chunkText = decoder.decode(value, { stream: true });
 						const textMatches = [...chunkText.matchAll(/"text"\s*:\s*"([^]*?)"/g)];
 						for (const match of textMatches) {
-							
-							// 【增强】：直接在流解析时将 Unicode 的尖括号替换回实体
 							let parsedText = match[1]
 								.replace(/\\n/g, '\n')
 								.replace(/\\"/g, '"')
@@ -2320,24 +2323,33 @@ export default {
 			} finally {
 				this.aiDialog.isStreaming = false;
 				
-				// 优化分离：UI 上只显示干净的问题（去除所有的前缀）
 				let uiDisplayQuery = this.aiDialog.currentQuery || this.aiDialog.currentContext || '请分析这段报错/代码';
+
+				let savedFile = null;
+				if (this.aiDialog.currentFile) {
+					savedFile = {
+						name: this.aiDialog.currentFile.name,
+						isImage: this.aiDialog.currentFile.isImage,
+						iconClass: this.aiDialog.currentFile.iconClass,
+						// 【解决刷新失效】：利用 Base64 持久化代替 Blob URL
+						url: this.aiDialog.currentFile.isImage ? (base64String || this.aiDialog.currentFile.url) : null
+					};
+				}
 
 				this.saveAiHistoryRecord({
 					id: Date.now(),
 					timestamp: getFormattedDateTime(),
-					queryText: uiDisplayQuery,    // 【用于 UI 展示】纯净无前缀
-					apiQueryText: currentApiText, // 【用于下一次 API 发送】包含完整的上下文拼接
-					image: this.aiDialog.currentImage,
+					queryText: uiDisplayQuery,    
+					apiQueryText: currentApiText, 
+					image: savedFile, 
 					responseText: this.aiDialog.responseText,
-					showThought: false // 归档后默认折叠思绪
+					showThought: false
 				});
 
-				// 清空 current 工作区，让页面回退到靠 v-for 循环显示刚刚那条数据的状态（无缝衔接）
 				this.aiDialog.responseText = "";
 				this.aiDialog.currentQuery = "";
 				this.aiDialog.currentContext = "";
-				this.aiDialog.currentImage = null;
+				this.aiDialog.currentFile = null;
 
 				this.$nextTick(() => {
 					this.scrollAiContentToBottom();
@@ -7151,6 +7163,8 @@ export default {
 }
 
 .editable-block {
+	height: 666px;
+    overflow-y: auto;
 	background-color: var(--code-bg);
 	color: var(--code-text);
 	padding: 20px 24px;
@@ -7881,5 +7895,16 @@ button.code-copy-btn.copied,
 	background-color: #27272a !important;
 	border-color: #3f3f46 !important;
 	color: #f8fafc !important;
+}
+/* AI 弹窗文档预览图标样式 */
+.preview-file-icon {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-color: var(--hover-sidebar);
+	color: var(--primary-blue);
+	font-size: 28px;
 }
 </style>
