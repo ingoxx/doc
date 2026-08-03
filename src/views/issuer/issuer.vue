@@ -598,7 +598,10 @@
 				<!-- ================= 页面右侧浮动 AI 助手入口悬浮球 ================= -->
 				<div class="ai-floating-fab" @click="openAiDialogFromFab" title="AI 智能排错解析助手与历史问答">
 					<div class="fab-glow-ring"></div>
-					<div class="fab-icon"><i class="el-icon-cpu"></i></div>
+					
+					<!-- 直接在这里写上 AI 字母，不需要任何 img 或 i 标签 -->
+					<div class="fab-icon">AI</div>
+					
 					<span class="fab-history-badge" v-if="aiHistory.length > 0">{{ aiHistory.length }}/10</span>
 				</div>
 
@@ -880,9 +883,9 @@
 					<i class="el-icon-download"></i> <span>直接下载</span>
 				</div>
 				<div class="action-divider"></div>
-				<div class="action-item" @click="handleContextMenuAction('svn')">
+				<!-- <div class="action-item" @click="handleContextMenuAction('svn')">
 					<i class="el-icon-upload2"></i> <span>提交到 SVN</span>
-				</div>
+				</div> -->
 			</div>
 		</div>
 
@@ -4840,10 +4843,21 @@ export default {
 	100% { transform: scale(1.35); opacity: 0; }
 }
 
+/* 让装载图片的容器占满整个悬浮球，并裁切成圆形 */
+/* 用纯文本作为图标的样式 */
 .fab-icon {
-	font-size: 22px;
+	width: 100%;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 20px;            /* 调整字体大小 */
+	font-weight: 900;           /* 设置极粗体，使其更有“图标”的厚重感 */
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; /* 使用系统自带的现代无衬线字体 */
+	letter-spacing: 0.5px;      /* 字母稍微拉开一点间距 */
+	color: #ffffff;             /* 纯白色 */
+	user-select: none;          /* 防止鼠标选中文字 */
 }
-
 .fab-history-badge {
 	position: absolute;
 	top: -4px;
@@ -7163,7 +7177,7 @@ export default {
 }
 
 .editable-block {
-	height: 666px;
+	max-height: 666px;
     overflow-y: auto;
 	background-color: var(--code-bg);
 	color: var(--code-text);
@@ -7906,5 +7920,12 @@ button.code-copy-btn.copied,
 	background-color: var(--hover-sidebar);
 	color: var(--primary-blue);
 	font-size: 28px;
+}
+/* 让图片按比例缩放铺满，不留缝隙 */
+.fab-custom-img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover; /* 如果图片有关键内容被裁切，可以改成 object-fit: contain; 加个底色 */
+	display: block;
 }
 </style>
