@@ -636,22 +636,23 @@
 				<div class="header-title-left">
 					<div class="ai-glow-icon"><i class="el-icon-cpu"></i></div>
 					<span class="title-text">AI 排错助手</span>
-					<span class="ai-model-tag">{{ aiForm.model || 'gemini-1.5-pro' }}</span>
+					<!-- <span class="ai-model-tag">{{ aiForm.model || 'gemini' }}</span> -->
+					 <span class="ai-model-tag">gemini</span>
 				</div>
 				<div class="header-actions-right">
 					<el-tooltip content="清空所有历史对话 (最多保存10条)" placement="top">
 						<el-button v-if="aiHistory.length > 0" size="mini" type="text" class="danger-text-btn" icon="el-icon-delete" @click="clearAllAiHistory">清空历史</el-button>
 					</el-tooltip>
-					<el-tooltip :content="aiDialog.showSettings ? '隐藏配置' : '模型与 Key 配置'" placement="top">
+					<!-- <el-tooltip :content="aiDialog.showSettings ? '隐藏配置' : '模型与 Key 配置'" placement="top">
 						<el-button size="mini" type="text" class="ai-config-toggle-btn" @click="aiDialog.showSettings = !aiDialog.showSettings">
 							<i class="el-icon-setting"></i>
 						</el-button>
-					</el-tooltip>
+					</el-tooltip> -->
 				</div>
 			</div>
 
 			<!-- AI 模型与 API Key 设置面板 -->
-			<transition name="el-zoom-in-top">
+			<!-- <transition name="el-zoom-in-top">
 				<div v-show="aiDialog.showSettings || !aiForm.apiKey" class="ai-settings-panel">
 					<div class="settings-title">
 						<i class="el-icon-s-tools"></i> Google Gemini 服务接口配置
@@ -672,7 +673,7 @@
 						</div>
 					</el-form>
 				</div>
-			</transition>
+			</transition> -->
 
 			<!-- 统一的无限流式原生对话视图 (增加 position: relative 供内部轨道定位) -->
 			<!-- 统一的无限流式原生对话视图 -->
@@ -794,13 +795,6 @@
 
 				<!-- 底部交互式输入框 -->
 				<div class="ai-input-composer">
-					<transition name="el-zoom-in-bottom">
-						<div v-if="aiDialog.queryText && !aiDialog.isStreaming && !aiDialog.responseText" class="composer-context-preview">
-							<div class="preview-label"><i class="el-icon-document-checked"></i> 当前划选上下文：</div>
-							<div class="preview-text">{{ aiDialog.queryText }}</div>
-							<i class="el-icon-close close-context-btn" @click="aiDialog.queryText = ''"></i>
-						</div>
-					</transition>
 
 					<!-- 本地图片/文档悬浮预览 -->
 					<transition name="el-zoom-in-bottom">
@@ -836,18 +830,33 @@
 
 							<div class="tool-divider" v-if="!aiSelectedFile"></div>
 
-							<div class="preset-icon-group" v-if="!aiSelectedFile">
+							<!-- <div class="preset-icon-group" v-if="!aiSelectedFile">
 								<span class="preset-pill-chip" @click="applyPromptPreset('详细排错分析')">🎯 详细排错</span>
 								<span class="preset-pill-chip" @click="applyPromptPreset('代码优化与修复')">💡 代码优化</span>
 								<span class="preset-pill-chip" @click="applyPromptPreset('简明原因总结')">📝 简明总结</span>
 								<span class="preset-pill-chip" @click="applyPromptPreset('英文日志翻译')">🌐 日志翻译</span>
-							</div>
+							</div> -->
+
 							<el-tooltip v-if="aiInputQuery" content="清空输入内容" placement="top">
 								<i class="el-icon-delete clear-input-icon" @click="aiInputQuery = ''"></i>
 							</el-tooltip>
 						</div>
 
 						<div class="bar-right-actions">
+							<!-- 【新增】AI 模型选择器 -->
+							<el-select 
+								v-model="aiForm.model" 
+								size="mini" 
+								class="modern-el-input" 
+								style="width: 140px; margin-right: 12px;" 
+								@change="handleModelChange"
+								:popper-class="isDark ? 'custom-dark-select' : 'custom-light-select'"
+							>
+								<el-option label="gemini-3.6-flash" value="gemini-3.6-flash"></el-option>
+								<el-option label="gemini-3.5-flash" value="gemini-3.5-flash"></el-option>
+								<el-option label="gemini-3.1-pro-preview" value="gemini-3.1-pro-preview"></el-option>
+							</el-select>
+
 							<button v-if="!aiDialog.isStreaming" type="button" class="run-send-btn" :disabled="!canSendAiQuery" @click="sendAiQueryStream(false)">
 								<span>发送</span><span class="kbd-shortcut">Enter ↵</span>
 							</button>
@@ -1500,7 +1509,7 @@ export default {
 			},
 			aiForm: {
 				apiKey: localStorage.getItem('ai_api_key') || '',
-				model: localStorage.getItem('ai_model') || 'gemini-1.5-pro',
+				model: localStorage.getItem('ai_model') || 'gemini-3.6-flash',
 				customPrompt: localStorage.getItem('ai_custom_prompt') || '你是一个资深运维架构师。请先将你的深度排错思考过程包裹在 <think> 和 </think> 标签中输出，然后再给出最终的解决方案：'
 			},
 			// 统一对话流状态维护
@@ -1765,6 +1774,11 @@ export default {
 		await this.fetchData();
 	},
 	methods: {
+		// 【新增】切换模型并持久化保存到本地缓存
+		handleModelChange(val) {
+			localStorage.setItem('ai_model', val);
+			this.showToast(`已切换至 ${val} 模型`);
+		},
 		// 【增强版】分离 <think> 标签与真实答案 (自动处理残留的 Unicode 转义符)
 		parseThinkAndAnswer(rawText) {
 			if (!rawText) return { think: '', answer: '' };
@@ -1942,18 +1956,20 @@ export default {
 			this.aiTooltip.visible = false;
 			if (!query) return;
 
-			this.aiDialog.queryText = query; // 将划选内容保存到 input-composer 上方的提示区
+			this.aiInputQuery = query; // 直接作为提问内容发送
 			this.aiDialog.visible = true;
 			this.$nextTick(() => {
 				this.scrollAiContentToBottom();
 			});
 
-			if (!this.aiForm.apiKey) {
-				this.aiDialog.showSettings = true;
-				this.showToast('请配置 Gemini API Key 以开启流式智能排错');
-			} else {
-				this.sendAiQueryStream();
-			}
+			this.sendAiQueryStream();
+
+			// if (!this.aiForm.apiKey) {
+			// 	this.aiDialog.showSettings = true;
+			// 	this.showToast('请配置 Gemini API Key 以开启流式智能排错');
+			// } else {
+			// 	this.sendAiQueryStream();
+			// }
 		},
 
 		// ======== AI 图片上传多模态（Multimodal Vision）========
@@ -2173,15 +2189,18 @@ export default {
 			return '提示：暂不支持该类型文档的前端纯文本提取。';
 		},
 
-		/**
-		 * 核心：Gemini API SSE 流式输出推流与多模态多轮对话
+				/**
+		 * 核心：Gemini API SSE 流式输出推流与多模态多轮对话（通过 Node.js 后端代理）
 		 */
 		async sendAiQueryStream() {
+			// 【修改 1】：如果 Key 放在服务器，这里不再需要拦截 API Key
+			/* 
 			if (!this.aiForm.apiKey) {
 				this.$message.warning("请先在右上角配置 Gemini API Key");
 				this.aiDialog.showSettings = true;
 				return;
 			}
+			*/
 
 			this.aiDialog.currentQuery = this.aiInputQuery;
 			this.aiDialog.currentContext = this.aiDialog.queryText;
@@ -2193,6 +2212,7 @@ export default {
 
 			const apiContents = [];
 
+			// 1. 拼接历史对话
 			for (let i = 0; i < this.aiHistory.length; i++) {
 				const item = this.aiHistory[i];
 				let userText = item.apiQueryText || item.queryText || ' ';
@@ -2208,7 +2228,7 @@ export default {
 
 			let currentApiText = "";
 			
-			// 【新增】：如果是文档，提前解析文字并悄悄塞入大模型的 Prompt 上下文中
+			// 2. 解析普通文档文本
 			if (this.aiDialog.currentFile && !this.aiDialog.currentFile.isImage) {
 				this.aiDialog.isStreaming = true; 
 				this.aiDialog.responseText = "正在通过前端引擎解析提取文档纯文本，请稍候...\n";
@@ -2224,20 +2244,22 @@ export default {
 				this.aiDialog.responseText = ""; 
 			}
 
+			// 3. 补回丢失的核心逻辑：拼接报错上下文和最新提问 修复！
 			if (this.aiDialog.currentContext) {
 				currentApiText += "【附带的报错或代码上下文】:\n" + this.aiDialog.currentContext + "\n\n";
 			}
 			currentApiText += "【用户的最新提问】:\n" + (this.aiDialog.currentQuery || "请基于上下文继续分析解答");
 
+			// 4. 首轮对话添加系统预设指令
 			let finalCurrentApiText = currentApiText;
-			if (this.aiHistory.length === 0 && this.aiForm.customPrompt) {
-				finalCurrentApiText = `【系统预设指令】\n${this.aiForm.customPrompt}\n\n${currentApiText}`;
-			}
+			// if (this.aiHistory.length === 0 && this.aiForm.customPrompt) {
+			// 	finalCurrentApiText = `【系统预设指令】\n${this.aiForm.customPrompt}\n\n${currentApiText}`;
+			// }
 
 			const currentParts = [{ text: finalCurrentApiText }];
 			let base64String = null;
 			
-			// 【修改】：只有图片文件，才进行 Base64 转换并走 inline_data 多模态视觉 API
+			// 5. 处理图片文件
 			if (this.aiDialog.currentFile && this.aiDialog.currentFile.isImage) {
 				try {
 					base64String = await this.fileToBase64(this.aiDialog.currentFile.file);
@@ -2256,9 +2278,17 @@ export default {
 
 			apiContents.push({ role: 'user', parts: currentParts });
 
-			const modelName = this.aiForm.model || 'gemini-1.5-pro';
-			const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?key=${this.aiForm.apiKey}`;
-			const payload = { contents: apiContents };
+			// 修复：保底模型名修正为官方合法名称
+			const modelName = this.aiForm.model || 'gemini-3.6-flash';
+			
+			const url = `http://model.anythingai.online/api/chat/stream`;
+			
+			// 修复：同时传递 modelName 和 model，确保与后端完美匹配
+			const payload = { 
+				modelName: "gemini-3.5-flash",
+				model: modelName, 
+				contents: apiContents 
+			};
 
 			this.aiDialog.isStreaming = true;
 			this.aiDialog.responseText = "";
@@ -2271,22 +2301,16 @@ export default {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify(payload),
-					signal: this.aiAbortController.signal 
+					signal: this.aiAbortController.signal
 				});
 
 				if (!response.ok) {
 					let errorText = response.statusText || "请求被拒绝";
 					try {
 						const errData = await response.json();
-						if (errData && errData.error && errData.error.message) {
-							errorText = errData.error.message;
-						} else if (errData && errData.message) {
-							errorText = errData.message;
-						} else {
-							errorText = JSON.stringify(errData);
-						}
+						errorText = errData.message || JSON.stringify(errData);
 					} catch (parseErr) {}
-					throw new Error(`API 接口报错: ${errorText}`);
+					throw new Error(`服务器报错: ${errorText}`);
 				}
 
 				const reader = response.body.getReader();
@@ -2298,22 +2322,11 @@ export default {
 					done = readerDone;
 					if (value) {
 						const chunkText = decoder.decode(value, { stream: true });
-						const textMatches = [...chunkText.matchAll(/"text"\s*:\s*"([^]*?)"/g)];
-						for (const match of textMatches) {
-							let parsedText = match[1]
-								.replace(/\\n/g, '\n')
-								.replace(/\\"/g, '"')
-								.replace(/\\\\/g, '\\')
-								.replace(/\\r/g, '\r')
-								.replace(/\\t/g, '\t')
-								.replace(/\\u003c/gi, '<')
-								.replace(/\\u003e/gi, '>')
-								.replace(/\\u0026/gi, '&')
-								.replace(/\\u0027/gi, "'");
-							
-							this.aiDialog.responseText += parsedText;
-							this.scrollAiContentToBottom();
-						}
+						
+						// Node.js 吐出的是纯文本流，直接追加追加到响应中
+						this.aiDialog.responseText += chunkText; 
+
+						this.scrollAiContentToBottom();
 					}
 				}
 			} catch (error) {
@@ -2334,7 +2347,6 @@ export default {
 						name: this.aiDialog.currentFile.name,
 						isImage: this.aiDialog.currentFile.isImage,
 						iconClass: this.aiDialog.currentFile.iconClass,
-						// 【解决刷新失效】：利用 Base64 持久化代替 Blob URL
 						url: this.aiDialog.currentFile.isImage ? (base64String || this.aiDialog.currentFile.url) : null
 					};
 				}
