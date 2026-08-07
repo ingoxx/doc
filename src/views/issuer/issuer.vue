@@ -2217,11 +2217,11 @@ export default {
 				const item = this.aiHistory[i];
 				let userText = item.apiQueryText || item.queryText || ' ';
 				
-				if (i === 0 && this.aiForm.customPrompt) {
-					if (!userText.includes("【系统预设指令】")) {
-						userText = `【系统预设指令】\n${this.aiForm.customPrompt}\n\n${userText}`;
-					}
-				}
+				// if (i === 0 && this.aiForm.customPrompt) {
+				// 	if (!userText.includes("【系统预设指令】")) {
+				// 		userText = `【系统预设指令】\n${this.aiForm.customPrompt}\n\n${userText}`;
+				// 	}
+				// }
 				apiContents.push({ role: 'user', parts: [{ text: userText }] });
 				apiContents.push({ role: 'model', parts: [{ text: item.responseText || ' ' }] });
 			}
