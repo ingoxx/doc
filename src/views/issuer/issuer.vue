@@ -636,8 +636,8 @@
 				<div class="header-title-left">
 					<div class="ai-glow-icon"><i class="el-icon-cpu"></i></div>
 					<span class="title-text">AI 排错助手</span>
-					<!-- <span class="ai-model-tag">{{ aiForm.model || 'gemini' }}</span> -->
-					 <span class="ai-model-tag">gemini</span>
+					<span class="ai-model-tag">{{ aiForm.model }}</span>
+					 <!-- <span class="ai-model-tag">gemini</span> -->
 				</div>
 				<div class="header-actions-right">
 					<el-tooltip content="清空所有历史对话 (最多保存10条)" placement="top">
