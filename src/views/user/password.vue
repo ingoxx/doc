@@ -42,6 +42,18 @@
 							placeholder="请输入绑定的用户名 / 账号" 
 							clearable 
 							prefix-icon="el-icon-user"
+							@keyup.enter.native="focusSecretCode">
+						</el-input>
+					</el-form-item>
+
+					<!-- 安全口令 (新增) -->
+					<el-form-item prop="secret_code">
+						<el-input 
+							ref="secretCodeInput"
+							v-model="resetForm.secret_code" 
+							placeholder="请输入安全验证口令" 
+							clearable 
+							prefix-icon="el-icon-key"
 							@keyup.enter.native="focusNewPassword">
 						</el-input>
 					</el-form-item>
@@ -120,12 +132,16 @@ export default {
 
 			resetForm: {
 				username: '',
+				secret_code: '', // 新增字段
 				new_password: '',
 				confirm_password: ''
 			},
 			resetRules: {
 				username: [
 					{ required: true, message: '请输入绑定的用户名', trigger: 'blur' }
+				],
+				secret_code: [
+					{ required: true, message: '请输入安全验证口令', trigger: 'blur' } // 新增口令必填校验
 				],
 				new_password: [
 					{ required: true, message: '请输入新密码', trigger: 'blur' },
@@ -147,6 +163,12 @@ export default {
 					this.$refs.resetUsernameInput.focus();
 				}
 			});
+		},
+
+		focusSecretCode() {
+			if (this.$refs.secretCodeInput) {
+				this.$refs.secretCodeInput.focus();
+			}
 		},
 
 		focusNewPassword() {
@@ -200,8 +222,10 @@ export default {
 
 			this.secret_loading = true;
 			try {
+				// 新增 secret_code 随 payload 一同提交
 				const payload = {
 					username: this.resetForm.username.trim(),
+					secret_code: this.resetForm.secret_code.trim(),
 					new_password: this.resetForm.new_password.trim()
 				};
 
@@ -212,11 +236,12 @@ export default {
 					Message.success({ message: resData.msg || "密码修改成功，请使用新密码登录", center: true });
 					this.secret_loading = false;
 					
-					this.resetForm = { username: '', new_password: '', confirm_password: '' };
+					// 重置表单状态
+					this.resetForm = { username: '', secret_code: '', new_password: '', confirm_password: '' };
 					// 成功后进行安全跳转
 					this.goLogin();
 				} else {
-					Message.error({ message: (resData && resData.msg) || "密码重置失败，请检查账号", center: true });
+					Message.error({ message: (resData && resData.msg) || "密码重置失败，请检查账号和口令", center: true });
 					this.secret_loading = false;
 					this.triggerShake();
 				}
