@@ -2189,7 +2189,7 @@ export default {
 			return '提示：暂不支持该类型文档的前端纯文本提取。';
 		},
 
-				/**
+		/**
 		 * 核心：Gemini API SSE 流式输出推流与多模态多轮对话（通过 Node.js 后端代理）
 		 */
 		async sendAiQueryStream() {
@@ -2217,11 +2217,11 @@ export default {
 				const item = this.aiHistory[i];
 				let userText = item.apiQueryText || item.queryText || ' ';
 				
-				// if (i === 0 && this.aiForm.customPrompt) {
-				// 	if (!userText.includes("【系统预设指令】")) {
-				// 		userText = `【系统预设指令】\n${this.aiForm.customPrompt}\n\n${userText}`;
-				// 	}
-				// }
+				if (i === 0 && this.aiForm.customPrompt) {
+					if (!userText.includes("【系统预设指令】")) {
+						userText = `【系统预设指令】\n${this.aiForm.customPrompt}\n\n${userText}`;
+					}
+				}
 				apiContents.push({ role: 'user', parts: [{ text: userText }] });
 				apiContents.push({ role: 'model', parts: [{ text: item.responseText || ' ' }] });
 			}
@@ -2281,7 +2281,7 @@ export default {
 			// 修复：保底模型名修正为官方合法名称
 			const modelName = this.aiForm.model || 'gemini-3.6-flash';
 			
-			const url = `http://model.anythingai.online/api/chat/stream`;
+			const url = `https://model.anythingai.online/api/chat/stream`;
 			
 			// 修复：同时传递 modelName 和 model，确保与后端完美匹配
 			const payload = { 
