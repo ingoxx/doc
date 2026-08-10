@@ -848,12 +848,12 @@
 							<div class="tool-divider" v-if="!aiSelectedFile"></div>
 
 							<!-- 恢复并美化了常用预设 Prompt 芯片功能 -->
-							<div class="preset-icon-group" v-if="!aiSelectedFile">
+							<!-- <div class="preset-icon-group" v-if="!aiSelectedFile">
 								<span class="preset-pill-chip" @click="applyPromptPreset('详细排错分析')"><i class="el-icon-aim"></i> 详细排错</span>
 								<span class="preset-pill-chip" @click="applyPromptPreset('代码优化与修复')"><i class="el-icon-magic-stick"></i> 代码优化</span>
 								<span class="preset-pill-chip" @click="applyPromptPreset('简明原因总结')"><i class="el-icon-edit-outline"></i> 简明总结</span>
 								<span class="preset-pill-chip" @click="applyPromptPreset('英文日志翻译')"><i class="el-icon-chat-line-square"></i> 日志翻译</span>
-							</div>
+							</div> -->
 
 							<el-tooltip v-if="aiInputQuery" content="清空输入内容" placement="top">
 								<i class="el-icon-delete clear-input-icon" @click="aiInputQuery = ''"></i>
