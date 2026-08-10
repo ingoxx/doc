@@ -1325,11 +1325,9 @@ import {
 	get_users,
 	update_category_share,
 	update_problem_share,
-	download_file,
+	login_out,
 } from '../../api';
-
-import axios from 'axios'
-import baseUrl from '../../utils/baseUrl'
+import baseUrl from '../../utils/baseUrl';
 
 import {
 	Message,
@@ -2329,12 +2327,11 @@ export default {
 
 			// 修复：保底模型名修正为官方合法名称
 			const modelName = this.aiForm.model || 'gemini-3.6-flash';
-			
-			const url = `https://model.anythingai.online/api/chat/stream`;
+			const url = `${baseUrl}/api/chat/stream`;
 			
 			// 修复：同时传递 modelName 和 model，确保与后端完美匹配
 			const payload = { 
-				modelName: "gemini-3.5-flash",
+				modelName: "gemini-3.6-flash",
 				model: modelName, 
 				contents: apiContents 
 			};
@@ -3897,18 +3894,51 @@ export default {
 		},
 
 		handleUserCommand(command) {
-			MessageBox.confirm('确定要退出当前系统吗?', '退出确认', {
-				confirmButtonText: '安全退出',
-				cancelButtonText: '取消',
-				type: 'warning',
-				customClass: 'custom-logout-confirm'
-			}).then(() => {
-				localStorage.removeItem('sign');
-				localStorage.removeItem('userInfo');
-				localStorage.removeItem('user');
-				Message.success('已退出系统');
-				setTimeout(() => { window.location.reload(); }, 500);
-			}).catch(() => {});
+			if (command === 'logout') {
+				MessageBox.confirm('确定要退出当前系统吗?', '退出确认', {
+					confirmButtonText: '安全退出',
+					cancelButtonText: '取消',
+					type: 'warning',
+					customClass: 'custom-logout-confirm'
+				}).then(async () => {
+					try {
+						// 获取当前用户名
+						const currentUsername = localStorage.getItem('uid');
+
+						if (currentUsername) {
+							// 发起退出请求
+							const resp = await login_out({ username: currentUsername });
+							
+							// 兼容 axios 的嵌套结构 (如果有 resp.data 就取 data，否则直接取 resp)
+							const res = resp?.data?.code !== undefined ? resp.data : resp;
+
+							// 判断后端返回的 code 是否为 1000
+							if (res && res.code === 1000) {
+								Message.success(res?.msg || '已安全退出系统');
+							} else {
+								// 退出失败，提示后端返回的 msg
+								Message.warning(res?.msg || '后端状态异常，已在前端强制退出');
+							}
+						} else {
+							Message.success('已退出系统');
+						}
+					} catch (error) {
+						console.error('调用后端退出接口失败:', error);
+						Message.error('网络或服务器异常，已在前端强制退出');
+					} finally {
+						// 核心兜底：无论后端校验是否成功，前端必须清除本地缓存并刷新
+						// 否则一旦后端 Token 过期或抛错，用户将永远卡在“退出失败”的状态
+						localStorage.removeItem('sign');
+						localStorage.removeItem('uid');
+						localStorage.removeItem('username'); 
+						
+						// 延迟 500ms 刷新页面，让用户能看清 Toast 提示
+						setTimeout(() => { window.location.reload(); }, 500);
+					}
+				}).catch(() => {
+					// 用户点击了取消退出
+				});
+			}
 		},
 
 		isMarkdown(text) {

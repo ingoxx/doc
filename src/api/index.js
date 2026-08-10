@@ -10,6 +10,7 @@ export const del_problems = (params) => post(`/v1/del-problem?sign=${localStorag
 export const update_problems_categories = (params) => post(`/v1/update-problem-category?sign=${localStorage.getItem('sign')}&uid=${localStorage.getItem('uid')}`, params);
 export const update_category_share = (params) => post(`/v1/update-category-share?sign=${localStorage.getItem('sign')}&uid=${localStorage.getItem('uid')}`, params);
 export const update_problem_share = (params) => post(`/v1/update-problem-share?sign=${localStorage.getItem('sign')}&uid=${localStorage.getItem('uid')}`, params);
+export const login_out = (params) => post(`/v1/loginout?sign=${localStorage.getItem('sign')}&uid=${localStorage.getItem('uid')}`, params);
 
 
 export const get_categories = (params) => get(`/v1/get-category?sign=${localStorage.getItem('sign')}&uid=${localStorage.getItem('uid')}`, params);

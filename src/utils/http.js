@@ -31,7 +31,6 @@ instance.interceptors.response.use(resp => {
                 localStorage.removeItem('username');
                 localStorage.removeItem('uid');
                 window.location.href = '/login';
-                window.location.href = '/login';
             }, 3000);
             break;
         case 403:
