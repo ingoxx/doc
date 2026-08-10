@@ -626,7 +626,7 @@
 		<el-dialog 
 			v-dialogDrag 
 			:visible.sync="aiDialog.visible" 
-			:width="dialogWidth" 
+			:width="aiDialogWidth" 
 			:close-on-click-modal="false" 
 			custom-class="modern-dialog ai-dialog-modal"
 			@closed="handleAiDialogClose"
@@ -635,7 +635,7 @@
 			<div slot="title" class="ai-dialog-custom-header">
 				<div class="header-title-left">
 					<div class="ai-glow-icon"><i class="el-icon-cpu"></i></div>
-					<span class="title-text">AI 排错助手</span>
+					<span class="title-text">AI助手</span>
 					<span class="ai-model-tag">{{ aiForm.model }}</span>
 					 <!-- <span class="ai-model-tag">gemini</span> -->
 				</div>
@@ -650,30 +650,6 @@
 					</el-tooltip> -->
 				</div>
 			</div>
-
-			<!-- AI 模型与 API Key 设置面板 -->
-			<!-- <transition name="el-zoom-in-top">
-				<div v-show="aiDialog.showSettings || !aiForm.apiKey" class="ai-settings-panel">
-					<div class="settings-title">
-						<i class="el-icon-s-tools"></i> Google Gemini 服务接口配置
-						<span class="settings-tip">(已加密保存于本地浏览器)</span>
-					</div>
-					<el-form size="small" label-position="top">
-						<el-form-item label="Gemini API Key">
-							<el-input class="modern-el-input" v-model="aiForm.apiKey" type="password" show-password placeholder="请输入您的 API Key (如 AIzaSy...)"></el-input>
-						</el-form-item>
-						<el-form-item label="AI 模型 Model">
-							<el-input class="modern-el-input" v-model="aiForm.model" placeholder="默认: gemini-1.5-pro，也可填写 gemini-1.5-flash 等"></el-input>
-						</el-form-item>
-						<el-form-item label="提问 Prompt 预设前缀 (深度思考提示词)">
-							<el-input class="modern-el-input" v-model="aiForm.customPrompt" placeholder="例如: 请先将你的深度排错思考过程包裹在 <think> 标签中输出，然后给出解决方案："></el-input>
-						</el-form-item>
-						<div style="text-align: right; margin-top: 12px;">
-							<el-button size="mini" type="primary" class="primary-gradient-btn" icon="el-icon-check" @click="saveAiSettings">保 存 配 置</el-button>
-						</div>
-					</el-form>
-				</div>
-			</transition> -->
 
 			<!-- 统一的无限流式原生对话视图 (增加 position: relative 供内部轨道定位) -->
 			<!-- 统一的无限流式原生对话视图 -->
@@ -697,15 +673,49 @@
 					
 					<div class="chat-empty-hint" v-if="aiHistory.length === 0 && !aiDialog.responseText && !aiDialog.isStreaming">
 						<div class="ai-glow-icon large"><i class="el-icon-cpu"></i></div>
-						<h3>AI 助手已就绪</h3>
-						<p>支持多模态理解，请在下方输入报错信息，或上传截图、日志、Word、Excel 文档即可开始智能分析。</p>
+						<h3 class="welcome-title">史上最牛的AI助手</h3>
+						<p class="welcome-subtitle">已接入大语言模型，支持多模态理解与深度报错分析。请选择快捷功能，或直接在下方提问。</p>
+						
+						<!-- 新增实用的 AI 向导推荐卡片 -->
+						<div class="ai-suggestion-grid">
+							<div class="suggestion-card" @click="applySuggestion('解析系统报错')">
+								<div class="sugg-icon"><i class="el-icon-warning-outline"></i></div>
+								<div class="sugg-text">
+									<h4>解析系统报错</h4>
+									<p>粘贴报错日志，AI 将深度分析可能的原因并提供排查思路</p>
+								</div>
+							</div>
+							<div class="suggestion-card" @click="applySuggestion('代码审查与优化')">
+								<div class="sugg-icon"><i class="el-icon-finished"></i></div>
+								<div class="sugg-text">
+									<h4>代码审查与重构</h4>
+									<p>发现潜在 Bug 与性能瓶颈，提供优化后的完整高质量代码</p>
+								</div>
+							</div>
+							<div class="suggestion-card" @click="applySuggestion('配置命令解释')">
+								<div class="sugg-icon"><i class="el-icon-setting"></i></div>
+								<div class="sugg-text">
+									<h4>命令与配置解释</h4>
+									<p>详细解析复杂的 Linux Shell 命令或 Nginx/MySQL 等配置文件</p>
+								</div>
+							</div>
+							<div class="suggestion-card" @click="applySuggestion('总结文档思路')">
+								<div class="sugg-icon"><i class="el-icon-document"></i></div>
+								<div class="sugg-text">
+									<h4>提炼当前文档要点</h4>
+									<p>一键提炼当前高亮排错文档的核心思路、根因和解决办法</p>
+								</div>
+							</div>
+						</div>
 					</div>
 
 					<!-- 1. 渲染：所有历史对话记录 -->
 					<div class="chat-turn-pair" v-for="(item, idx) in aiHistory" :key="'hist-' + (item.id || idx)" :id="'chat-turn-' + (item.id || idx)">
 						<div class="chat-message user-message">
 							<div class="msg-meta">
-								<span class="msg-author">User</span> <span class="msg-time">• {{ item.timestamp }}</span>
+								<div class="msg-avatar user-avatar-small"><i class="el-icon-user-solid"></i></div>
+								<span class="msg-author">我 (User)</span> 
+								<span class="msg-time">• {{ item.timestamp }}</span>
 							</div>
 							<div class="msg-content">
 								<!-- 适配：历史记录中的图片或文档 -->
@@ -722,7 +732,9 @@
 						
 						<div class="chat-message model-message">
 							<div class="msg-meta">
-								<span class="msg-author">Model</span> <span class="msg-time">• {{ item.timestamp }}</span>
+								<div class="msg-avatar model-avatar"><i class="el-icon-cpu"></i></div>
+								<span class="msg-author">AI 助手</span> 
+								<span class="msg-time">• {{ item.timestamp }}</span>
 								<el-popover placement="bottom-end" width="160" trigger="click" :visible-arrow="false" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 									<div class="action-menu-list">
 										<div class="action-item" @click="handleAiCopyCommand('raw', parseThinkAndAnswer(item.responseText).answer)"><i class="el-icon-document-copy"></i> <span>复制 MD 格式</span></div>
@@ -735,7 +747,7 @@
 							
 							<div v-if="parseThinkAndAnswer(item.responseText).think" style="margin-bottom: 12px;">
 								<div class="model-thoughts-mock" style="cursor: pointer; justify-content: space-between;" @click="$set(item, 'showThought', item.showThought === undefined ? false : !item.showThought)">
-									<div style="display: flex; align-items: center; gap: 8px;"><i class="el-icon-magic-stick"></i> AI 深度排错思考过程</div>
+									<div style="display: flex; align-items: center; gap: 8px;"><i class="el-icon-magic-stick"></i> AI的深度思考过程</div>
 									<i :class="item.showThought === false ? 'el-icon-arrow-down' : 'el-icon-arrow-up'"></i>
 								</div>
 								<transition name="el-zoom-in-top">
@@ -749,7 +761,11 @@
 					<!-- 2. 渲染：当前正在生成的会话 -->
 					<div class="chat-turn-pair" id="chat-turn-current" v-if="aiDialog.isStreaming || aiDialog.responseText">
 						<div class="chat-message user-message">
-							<div class="msg-meta"><span class="msg-author">User</span> <span class="msg-time">• 刚刚</span></div>
+							<div class="msg-meta">
+								<div class="msg-avatar user-avatar-small"><i class="el-icon-user-solid"></i></div>
+								<span class="msg-author">我 (User)</span> 
+								<span class="msg-time">• 刚刚</span>
+							</div>
 							<div class="msg-content">
 								<!-- 适配：当前发送中的图片或文档 -->
 								<div v-if="aiDialog.currentFile" class="context-image-snippet">
@@ -765,7 +781,8 @@
 						
 						<div class="chat-message model-message">
 							<div class="msg-meta">
-								<span class="msg-author">Model</span> 
+								<div class="msg-avatar model-avatar"><i class="el-icon-cpu"></i></div>
+								<span class="msg-author">AI 助手</span> 
 								<span class="msg-time" :class="{ 'is-pulsing': aiDialog.isStreaming }">• {{ aiDialog.isStreaming ? '正在思考生成中...' : '刚刚' }}</span>
 								<el-popover v-if="!aiDialog.isStreaming && parseThinkAndAnswer(aiDialog.responseText).answer" placement="bottom-end" width="160" trigger="click" :visible-arrow="false" :popper-class="isDark ? 'custom-dark-popover' : 'custom-light-popover'">
 									<div class="action-menu-list">
@@ -778,7 +795,7 @@
 							
 							<div v-if="parseThinkAndAnswer(aiDialog.responseText).think || aiDialog.isStreaming" style="margin-bottom: 12px;">
 								<div class="model-thoughts-mock" style="cursor: pointer; justify-content: space-between;" @click="$set(aiDialog, 'showThought', aiDialog.showThought === undefined ? false : !aiDialog.showThought)">
-									<div style="display: flex; align-items: center; gap: 8px;"><i :class="aiDialog.isStreaming && !parseThinkAndAnswer(aiDialog.responseText).answer ? 'el-icon-loading' : 'el-icon-magic-stick'"></i> {{ aiDialog.isStreaming && !parseThinkAndAnswer(aiDialog.responseText).answer ? 'Thinking process active...' : 'AI 深度排错思考过程' }}</div>
+									<div style="display: flex; align-items: center; gap: 8px;"><i :class="aiDialog.isStreaming && !parseThinkAndAnswer(aiDialog.responseText).answer ? 'el-icon-loading' : 'el-icon-magic-stick'"></i> {{ aiDialog.isStreaming && !parseThinkAndAnswer(aiDialog.responseText).answer ? 'Deep Thinking active...' : 'AI的深度思考过程' }}</div>
 									<i :class="aiDialog.showThought === false ? 'el-icon-arrow-down' : 'el-icon-arrow-up'"></i>
 								</div>
 								<transition name="el-zoom-in-top">
@@ -830,12 +847,13 @@
 
 							<div class="tool-divider" v-if="!aiSelectedFile"></div>
 
-							<!-- <div class="preset-icon-group" v-if="!aiSelectedFile">
-								<span class="preset-pill-chip" @click="applyPromptPreset('详细排错分析')">🎯 详细排错</span>
-								<span class="preset-pill-chip" @click="applyPromptPreset('代码优化与修复')">💡 代码优化</span>
-								<span class="preset-pill-chip" @click="applyPromptPreset('简明原因总结')">📝 简明总结</span>
-								<span class="preset-pill-chip" @click="applyPromptPreset('英文日志翻译')">🌐 日志翻译</span>
-							</div> -->
+							<!-- 恢复并美化了常用预设 Prompt 芯片功能 -->
+							<div class="preset-icon-group" v-if="!aiSelectedFile">
+								<span class="preset-pill-chip" @click="applyPromptPreset('详细排错分析')"><i class="el-icon-aim"></i> 详细排错</span>
+								<span class="preset-pill-chip" @click="applyPromptPreset('代码优化与修复')"><i class="el-icon-magic-stick"></i> 代码优化</span>
+								<span class="preset-pill-chip" @click="applyPromptPreset('简明原因总结')"><i class="el-icon-edit-outline"></i> 简明总结</span>
+								<span class="preset-pill-chip" @click="applyPromptPreset('英文日志翻译')"><i class="el-icon-chat-line-square"></i> 日志翻译</span>
+							</div>
 
 							<el-tooltip v-if="aiInputQuery" content="清空输入内容" placement="top">
 								<i class="el-icon-delete clear-input-icon" @click="aiInputQuery = ''"></i>
@@ -843,7 +861,7 @@
 						</div>
 
 						<div class="bar-right-actions">
-							<!-- 【新增】AI 模型选择器 -->
+							<!-- AI 模型选择器 -->
 							<el-select 
 								v-model="aiForm.model" 
 								size="mini" 
@@ -1510,7 +1528,7 @@ export default {
 			aiForm: {
 				apiKey: localStorage.getItem('ai_api_key') || '',
 				model: localStorage.getItem('ai_model') || 'gemini-3.6-flash',
-				customPrompt: localStorage.getItem('ai_custom_prompt') || '你是一个资深运维架构师。请先将你的深度排错思考过程包裹在 <think> 和 </think> 标签中输出，然后再给出最终的解决方案：'
+				customPrompt: localStorage.getItem('ai_custom_prompt') || '请务必先将你的深度思考过程包裹在 <think> 和 </think> 标签中输出，然后再给出最终可靠的回复：'
 			},
 			// 统一对话流状态维护
 			aiDialog: {
@@ -1597,6 +1615,10 @@ export default {
 		}
 	},
 	computed: {
+		// 【新增】专属 AI 弹窗的更宽的尺寸设置，提供更大操作阅读空间
+		aiDialogWidth() {
+			return this.isMobile ? '96%' : '880px';
+		},
 		// 计算 AI 提问是否具备发送条件
 		canSendAiQuery() {
 			const hasText = !!(this.aiInputQuery && this.aiInputQuery.trim().length > 0);
@@ -1774,6 +1796,33 @@ export default {
 		await this.fetchData();
 	},
 	methods: {
+		// 【新增】AI助手 面板的导航空态点击事件，帮助用户快速预填充
+		applySuggestion(type) {
+			if (type === '解析系统报错') {
+				this.aiInputQuery = '请帮我分析以下系统报错信息，指出可能的原因并提供详细的解决建议：\n\n【在此粘贴报错日志】';
+			} else if (type === '代码审查与优化') {
+				this.aiInputQuery = '请帮我审查以下代码，指出潜在的Bug、性能问题或安全隐患，并给出优化重构后的完整代码：\n\n【在此粘贴代码】';
+			} else if (type === '配置命令解释') {
+				this.aiInputQuery = '请详细解释以下配置文件（或Shell/Linux命令）中各项参数的具体含义和作用：\n\n【在此粘贴命令或配置】';
+			} else if (type === '总结文档思路') {
+				let docCtx = '【如果没有选中特定文档，请在此手动粘贴内容】';
+				// 尝试读取当前所选/高亮的文档内容
+				if (this.currentProblems && this.currentProblems.length > 0) {
+					const prob = this.activeMarkerId ? this.currentProblems.find(p => p.id === this.activeMarkerId) : this.currentProblems[0];
+					if(prob && prob.solution) {
+						docCtx = prob.solution.substring(0, 800) + (prob.solution.length > 800 ? '\n...(已截断)' : '');
+					}
+				}
+				this.aiInputQuery = '请用最简明扼要的语言，将以下排错文档的核心思路、根因分析和解决办法总结成几条清晰的要点：\n\n' + docCtx;
+			}
+			
+			// 自动获得输入焦点，方便用户后续编辑
+			this.$nextTick(() => {
+				const textarea = this.$el.querySelector('.composer-textarea textarea');
+				if (textarea) textarea.focus();
+			});
+		},
+
 		// 【新增】切换模型并持久化保存到本地缓存
 		handleModelChange(val) {
 			localStorage.setItem('ai_model', val);
@@ -2030,7 +2079,7 @@ export default {
 			} else if (type === '英文日志翻译') {
 				this.aiForm.customPrompt = '请将以下英文排错日志/文档翻译为中文，并对专业技术词汇进行简要释义：';
 			}
-			this.showToast(`已应用预设：${type}`);
+			this.showToast(`已应用全局预设角色/提示词：${type}`);
 		},
 
 		saveAiSettings() {
@@ -2333,7 +2382,7 @@ export default {
 				if (error.name === 'AbortError') {
 					this.aiDialog.responseText += `\n\n⚠️ **生成已手动停止**`;
 				} else {
-					this.aiDialog.responseText += `\n\n❌ **请求中断:** ${error.message}`;
+					this.aiDialog.responseText += `\n\n❌ **请求中断:** ${error.message}, 可能当前模型太多人使用请更换模型或稍后重试。`;
 				}
 				this.scrollAiContentToBottom();
 			} finally {
@@ -4855,21 +4904,20 @@ export default {
 	100% { transform: scale(1.35); opacity: 0; }
 }
 
-/* 让装载图片的容器占满整个悬浮球，并裁切成圆形 */
-/* 用纯文本作为图标的样式 */
 .fab-icon {
 	width: 100%;
 	height: 100%;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	font-size: 20px;            /* 调整字体大小 */
-	font-weight: 900;           /* 设置极粗体，使其更有“图标”的厚重感 */
-	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; /* 使用系统自带的现代无衬线字体 */
-	letter-spacing: 0.5px;      /* 字母稍微拉开一点间距 */
-	color: #ffffff;             /* 纯白色 */
-	user-select: none;          /* 防止鼠标选中文字 */
+	font-size: 20px;
+	font-weight: 900;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+	letter-spacing: 0.5px;
+	color: #ffffff;
+	user-select: none;
 }
+
 .fab-history-badge {
 	position: absolute;
 	top: -4px;
@@ -5032,76 +5080,176 @@ export default {
 	overflow-y: auto;
 	display: flex;
 	flex-direction: column;
-	gap: 28px;
+	gap: 16px;
 	padding: 10px 24px 20px 14px; 
 	scroll-behavior: smooth;
 	position: relative; 
 }
 
+/* AI 向导推荐空状态网格 UI */
 .chat-empty-hint {
 	margin: auto;
 	text-align: center;
 	color: var(--text-muted);
+	padding: 20px 0;
 }
 
-.chat-empty-hint h3 {
-	margin: 0 0 8px 0;
+.welcome-title {
 	color: var(--text-h1);
+	margin: 0 0 8px 0;
+	font-size: 20px;
+	font-weight: 700;
 }
 
+.welcome-subtitle {
+	color: var(--text-muted);
+	margin: 0 0 24px 0;
+	font-size: 13px;
+	max-width: 80%;
+	margin-left: auto;
+	margin-right: auto;
+}
+
+.ai-suggestion-grid {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 16px;
+	margin-top: 16px;
+	max-width: 680px;
+	margin-left: auto;
+	margin-right: auto;
+}
+
+.suggestion-card {
+	background-color: var(--hover-sidebar);
+	border: 1px solid var(--border-color);
+	border-radius: 12px;
+	padding: 16px;
+	display: flex;
+	align-items: flex-start;
+	gap: 14px;
+	cursor: pointer;
+	text-align: left;
+	transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.suggestion-card:hover {
+	border-color: var(--primary-blue);
+	background-color: rgba(14, 165, 233, 0.05);
+	transform: translateY(-3px);
+	box-shadow: 0 6px 16px rgba(14, 165, 233, 0.12);
+}
+
+.sugg-icon {
+	width: 38px;
+	height: 38px;
+	border-radius: 10px;
+	background: rgba(14, 165, 233, 0.1);
+	color: var(--primary-blue);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 20px;
+	flex-shrink: 0;
+	transition: all 0.25s;
+}
+
+.suggestion-card:hover .sugg-icon {
+	background: var(--primary-blue);
+	color: #fff;
+	transform: scale(1.1);
+}
+
+.sugg-text h4 {
+	margin: 0 0 6px 0;
+	font-size: 14px;
+	color: var(--text-h1);
+	font-weight: 600;
+}
+
+.sugg-text p {
+	margin: 0;
+	font-size: 12px;
+	color: var(--text-muted);
+	line-height: 1.4;
+}
+
+/* 气泡聊天核心重构样式 */
 .chat-turn-pair {
 	display: flex;
 	flex-direction: column;
-	gap: 24px;
+	gap: 14px;
 	padding-bottom: 24px;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+	border-bottom: 1px solid rgba(14, 165, 233, 0.08);
 }
 
 .bp-wrapper:not(.is-dark) .chat-turn-pair {
 	border-bottom-color: rgba(0, 0, 0, 0.05);
 }
 
-/* 1. 修改原有的 .chat-message，增加内边距和透明边框的默认状态 */
 .chat-message {
 	display: flex;
 	flex-direction: column;
-	gap: 10px;
-	padding: 16px 20px; /* 增加内边距，让内容有独立卡片的呼吸感 */
-	border-radius: 16px; /* 增加较大圆角，贴近截图效果 */
-	border: 1px solid transparent; /* 默认透明边框，避免 hover 时发生抖动 */
-	transition: background-color 0.25s ease, border-color 0.25s ease; /* 平滑过渡动画 */
+	gap: 8px;
+	padding: 16px 20px;
+	border-radius: 12px;
+	border: 1px solid transparent;
+	transition: background-color 0.25s ease, border-color 0.25s ease;
 }
 
-/* 2. 新增：浅色模式下鼠标移入的 Hover 效果 */
-.chat-message:hover {
+/* User Message 独立气泡背景 */
+.user-message {
 	background-color: var(--hover-sidebar);
 	border-color: var(--border-color);
+	margin-left: 24px;
+	border-top-right-radius: 4px;
 }
 
-/* 3. 新增：暗黑模式下鼠标移入的 Hover 效果 (高度还原您截图中的深色极客质感) */
-.bp-wrapper.is-dark .chat-message:hover {
-	background-color: rgba(255, 255, 255, 0.03); /* 极微弱的白色底色 */
-	border-color: rgba(255, 255, 255, 0.08);    /* 微弱的高光边框 */
+/* Model Message 独立样式 */
+.model-message {
+	margin-right: 12px;
 }
 
-/* 4. 可选优化：因为给消息框增加了 padding，建议把上一级的间距稍微调小一点，使视觉更紧凑 */
-/* 找到 .chat-turn-pair 并将其中的 gap: 24px 修改为 gap: 12px */
-.chat-turn-pair {
-	display: flex;
-	flex-direction: column;
-	gap: 12px; /* 从 24px 缩小为 12px */
-	padding-bottom: 24px;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+.bp-wrapper.is-dark .model-message:hover {
+	background-color: rgba(255, 255, 255, 0.02);
+	border-color: rgba(255, 255, 255, 0.05);
 }
 
-/* User & Model 名字标题栏 */
+.bp-wrapper:not(.is-dark) .model-message:hover {
+	background-color: rgba(0, 0, 0, 0.01);
+	border-color: rgba(0, 0, 0, 0.04);
+}
+
+/* 头像与标题栏 */
 .msg-meta {
 	font-size: 13px;
 	font-weight: 500;
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 10px;
 	color: var(--text-muted);
+	margin-bottom: 4px;
+}
+
+.msg-avatar {
+	width: 24px;
+	height: 24px;
+	border-radius: 6px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 13px;
+	color: #fff;
+	flex-shrink: 0;
+}
+
+.user-avatar-small {
+	background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+}
+
+.model-avatar {
+	background: linear-gradient(135deg, #0ea5e9, #6366f1);
+	box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3);
 }
 
 .msg-author {
@@ -5132,31 +5280,17 @@ export default {
 	word-wrap: break-word;
 }
 
-/* 上下文包裹块 */
-.context-snippet {
-	background-color: var(--hover-sidebar);
-	border: 1px dashed var(--primary-blue);
-	border-radius: 8px;
-	padding: 8px 12px;
-	margin-bottom: 8px;
-	font-size: 12px;
-	color: var(--text-muted);
-	font-family: monospace;
-	max-height: 80px;
-	overflow-y: auto;
-	word-break: break-all;
-}
-
 /* 图文同框图片缩略块 */
 .context-image-snippet {
 	display: flex;
 	align-items: center;
 	gap: 10px;
-	background-color: var(--hover-sidebar);
+	background-color: var(--bg-app);
 	border-radius: 8px;
 	padding: 6px;
 	margin-bottom: 8px;
 	width: fit-content;
+	border: 1px solid var(--border-color);
 }
 
 .context-image-snippet .snippet-thumb {
@@ -5242,49 +5376,6 @@ export default {
 .ai-input-composer:focus-within {
 	border-color: var(--primary-blue);
 	box-shadow: 0 0 0 1px var(--primary-blue), 0 6px 20px rgba(14, 165, 233, 0.15);
-}
-
-/* 输入框上方的悬浮上下文提示 */
-.composer-context-preview {
-	background-color: var(--bg-app);
-	border: 1px dashed var(--primary-blue);
-	border-radius: 8px;
-	padding: 8px 12px;
-	margin-bottom: 8px;
-	position: relative;
-}
-
-.composer-context-preview .preview-label {
-	font-size: 12px;
-	font-weight: 700;
-	color: var(--primary-blue);
-	margin-bottom: 4px;
-	display: flex;
-	align-items: center;
-	gap: 6px;
-}
-
-.composer-context-preview .preview-text {
-	font-size: 12px;
-	color: var(--text-p);
-	line-height: 1.5;
-	max-height: 60px;
-	overflow-y: auto;
-	word-break: break-all;
-	font-family: monospace;
-}
-
-.close-context-btn {
-	position: absolute;
-	top: 8px;
-	right: 8px;
-	cursor: pointer;
-	color: var(--text-muted);
-	font-size: 14px;
-}
-
-.close-context-btn:hover {
-	color: #ef4444;
 }
 
 /* 输入框悬浮图片预览 */
@@ -5447,6 +5538,14 @@ export default {
 	border: 1px solid var(--border-color);
 	transition: all 0.2s;
 	user-select: none;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.preset-pill-chip i {
+	font-size: 13px;
+	color: inherit;
 }
 
 .preset-pill-chip:hover {
@@ -7937,7 +8036,7 @@ button.code-copy-btn.copied,
 .fab-custom-img {
 	width: 100%;
 	height: 100%;
-	object-fit: cover; /* 如果图片有关键内容被裁切，可以改成 object-fit: contain; 加个底色 */
+	object-fit: cover; 
 	display: block;
 }
 </style>
