@@ -872,7 +872,9 @@
 							>
 								<el-option label="gemini-3.6-flash" value="gemini-3.6-flash"></el-option>
 								<el-option label="gemini-3.5-flash" value="gemini-3.5-flash"></el-option>
+								<el-option label="gemini-3.5-flash-lite" value="gemini-3.5-flash-lite"></el-option>
 								<el-option label="gemini-3.1-pro-preview" value="gemini-3.1-pro-preview"></el-option>
+								<el-option label="gemini-3.1-flash-lite" value="gemini-3.1-flash-lite"></el-option>
 							</el-select>
 
 							<button v-if="!aiDialog.isStreaming" type="button" class="run-send-btn" :disabled="!canSendAiQuery" @click="sendAiQueryStream(false)">
@@ -4536,6 +4538,16 @@ export default {
 				.replace(/\n{3,}/g, '\n\n')
 				.trim();
 			return clean;
+		},
+
+		handleCopyCommand(command, solutionText) {
+			if (!solutionText) return;
+			if (command === 'raw') {
+				this.copySolution(solutionText, '原文内容已成功复制到剪贴板');
+			} else if (command === 'plain') {
+				const plainText = this.convertMarkdownToPlainText(solutionText);
+				this.copySolution(plainText, '纯文本无格式内容已成功复制到剪贴板');
+			}
 		},
 
 		copySolution(text, customToastMsg = '内容已成功复制到剪贴板') {
