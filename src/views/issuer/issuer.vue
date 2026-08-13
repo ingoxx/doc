@@ -1528,7 +1528,7 @@ export default {
 			aiForm: {
 				apiKey: localStorage.getItem('ai_api_key') || '',
 				model: localStorage.getItem('ai_model') || 'gemini-3.6-flash',
-				customPrompt: localStorage.getItem('ai_custom_prompt') || '请务必先将你的深度思考过程包裹在 <think> 和 </think> 标签中输出，然后再给出最终可靠的回复：'
+				customPrompt: '请务必先将你的深度思考过程包裹在 <think> 和 </think> 标签中输出，然后再给出最终可靠的回复：'
 			},
 			// 统一对话流状态维护
 			aiDialog: {
@@ -2242,15 +2242,6 @@ export default {
 		 * 核心：Gemini API SSE 流式输出推流与多模态多轮对话（通过 Node.js 后端代理）
 		 */
 		async sendAiQueryStream() {
-			// 【修改 1】：如果 Key 放在服务器，这里不再需要拦截 API Key
-			/* 
-			if (!this.aiForm.apiKey) {
-				this.$message.warning("请先在右上角配置 Gemini API Key");
-				this.aiDialog.showSettings = true;
-				return;
-			}
-			*/
-
 			this.aiDialog.currentQuery = this.aiInputQuery;
 			this.aiDialog.currentContext = this.aiDialog.queryText;
 			this.aiDialog.currentFile = this.aiSelectedFile;
@@ -2261,29 +2252,24 @@ export default {
 
 			const apiContents = [];
 
-			// 1. 拼接历史对话
+			// 1. 纯净地拼接历史对话（无任何多余包装语）
 			for (let i = 0; i < this.aiHistory.length; i++) {
 				const item = this.aiHistory[i];
-				let userText = item.apiQueryText || item.queryText || ' ';
+				const userText = item.apiQueryText || item.queryText || ' ';
 				
-				if (i === 0 && this.aiForm.customPrompt) {
-					if (!userText.includes("【系统预设指令】")) {
-						userText = `【系统预设指令】\n${this.aiForm.customPrompt}\n\n${userText}`;
-					}
-				}
 				apiContents.push({ role: 'user', parts: [{ text: userText }] });
 				apiContents.push({ role: 'model', parts: [{ text: item.responseText || ' ' }] });
 			}
 
 			let currentApiText = "";
 			
-			// 2. 解析普通文档文本
+			// 2. 解析普通文档文本（仅做最基础的文件名标注，让 AI 知道这是文件内容）
 			if (this.aiDialog.currentFile && !this.aiDialog.currentFile.isImage) {
 				this.aiDialog.isStreaming = true; 
 				this.aiDialog.responseText = "正在通过前端引擎解析提取文档纯文本，请稍候...\n";
 				try {
 					const docText = await this.extractTextFromFile(this.aiDialog.currentFile.file);
-					currentApiText += `【用户上传附带的文档 (${this.aiDialog.currentFile.name}) 的纯文本提取内容】:\n${docText}\n\n`;
+					currentApiText += `[文件 ${this.aiDialog.currentFile.name} 内容]:\n${docText}\n\n`;
 				} catch (e) {
 					this.$message.error("文档纯文本提取失败");
 					this.aiDialog.isStreaming = false;
@@ -2293,22 +2279,30 @@ export default {
 				this.aiDialog.responseText = ""; 
 			}
 
-			// 3. 补回丢失的核心逻辑：拼接报错上下文和最新提问 修复！
+			// 3. 纯净拼接：直接拼接用户可能划选的上下文和最新提问
 			if (this.aiDialog.currentContext) {
-				currentApiText += "【附带的报错或代码上下文】:\n" + this.aiDialog.currentContext + "\n\n";
+				currentApiText += this.aiDialog.currentContext + "\n\n";
 			}
-			currentApiText += "【用户的最新提问】:\n" + (this.aiDialog.currentQuery || "请基于上下文继续分析解答");
+			if (this.aiDialog.currentQuery) {
+				currentApiText += this.aiDialog.currentQuery;
+			}
 
-			// 4. 首轮对话添加系统预设指令
-			let finalCurrentApiText = currentApiText;
-			// if (this.aiHistory.length === 0 && this.aiForm.customPrompt) {
-			// 	finalCurrentApiText = `【系统预设指令】\n${this.aiForm.customPrompt}\n\n${currentApiText}`;
-			// }
+			// 去除首尾多余换行
+			let finalCurrentApiText = currentApiText.trim();
+			if (!finalCurrentApiText) {
+				finalCurrentApiText = " "; 
+			}
+
+			// 4. 【核心点】只在整个会话的“第一次”提问时，静默插入 think 指令
+			if (this.aiHistory.length === 0) {
+				const thinkInstruction = "请将思考过程包裹在 <think> 和 </think> 标签中输出，最终回复正常输出。\n\n";
+				finalCurrentApiText = thinkInstruction + finalCurrentApiText;
+			}
 
 			const currentParts = [{ text: finalCurrentApiText }];
 			let base64String = null;
 			
-			// 5. 处理图片文件
+			// 5. 处理图片文件多模态
 			if (this.aiDialog.currentFile && this.aiDialog.currentFile.isImage) {
 				try {
 					base64String = await this.fileToBase64(this.aiDialog.currentFile.file);
@@ -2327,11 +2321,10 @@ export default {
 
 			apiContents.push({ role: 'user', parts: currentParts });
 
-			// 修复：保底模型名修正为官方合法名称
+			// 6. 准备发起流式请求
 			const modelName = this.aiForm.model || 'gemini-3.6-flash';
 			const url = `${baseUrl}/api/chat/stream`;
 			
-			// 修复：同时传递 modelName 和 model，确保与后端完美匹配
 			const payload = { 
 				modelName: "gemini-3.6-flash",
 				model: modelName, 
@@ -2371,9 +2364,8 @@ export default {
 					if (value) {
 						const chunkText = decoder.decode(value, { stream: true });
 						
-						// Node.js 吐出的是纯文本流，直接追加追加到响应中
+						// 吐出纯文本流，直接追加追加到响应中
 						this.aiDialog.responseText += chunkText; 
-
 						this.scrollAiContentToBottom();
 					}
 				}
@@ -2387,7 +2379,7 @@ export default {
 			} finally {
 				this.aiDialog.isStreaming = false;
 				
-				let uiDisplayQuery = this.aiDialog.currentQuery || this.aiDialog.currentContext || '请分析这段报错/代码';
+				let uiDisplayQuery = this.aiDialog.currentQuery || this.aiDialog.currentContext || '[图片/文件分析]';
 
 				let savedFile = null;
 				if (this.aiDialog.currentFile) {
@@ -2403,7 +2395,7 @@ export default {
 					id: Date.now(),
 					timestamp: getFormattedDateTime(),
 					queryText: uiDisplayQuery,    
-					apiQueryText: currentApiText, 
+					apiQueryText: finalCurrentApiText, // 存入带有首次 think 指令的纯净提问
 					image: savedFile, 
 					responseText: this.aiDialog.responseText,
 					showThought: false
